@@ -24,10 +24,12 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Download prebuilt binaries
-        env:
-          GH_TOKEN: ${{ github.token }}
-          BUILD_RUN_ID: ${{ github.event.inputs.build_run_id || '26919774010' }}
-        run: gh run download "$BUILD_RUN_ID" -n iouring_bench_build -D artifact_bin
+        uses: actions/download-artifact@v4
+        with:
+          name: iouring_bench_build
+          path: artifact_bin
+          run-id: ${{ github.event.inputs.build_run_id || '26919774010' }}
+          github-token: ${{ github.token }}
 
       - name: Prepare binaries
         run: |
