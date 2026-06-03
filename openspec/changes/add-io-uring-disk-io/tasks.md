@@ -1,8 +1,11 @@
 # Tasks
 
-> **Окружение проверено (colima arm64, ядро 6.8):** io_uring smoke-тест
-> (`smoke/uring_smoke.c`) проходит при `seccomp=unconfined` и падает с `EPERM` под
-> дефолтным seccomp Docker — подтверждает необходимость fallback (задачи 1.2, 6.4).
+> **Окружение проверено.** Локально (colima arm64, ядро 6.8): smoke проходит при
+> `seccomp=unconfined`, падает с `EPERM` под дефолтным seccomp, и `ENOSYS` под amd64/Rosetta
+> — подтверждает необходимость fallback (задачи 1.2, 6.4).
+> **CI Phase 1 ЗЕЛЁНАЯ** (`.github/workflows/iouring_probe.yml`, нативный x86_64 ubuntu-24.04):
+> raw smoke + backend-модуль + 8 конкурентных чтений + стаб-ветка — всё OK за 22с.
+> ⇒ GitHub Actions = валидный стенд для x86_64-сборки и A/B-бенчей.
 
 ## 1. Сборка и детект
 - [x] 1.1 Найти `liburing` в CMake, ввести `HAVE_IO_URING`, опцию сборки

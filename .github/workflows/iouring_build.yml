@@ -1,0 +1,27 @@
+name: 🏗️ io_uring build
+
+# Phase 2a: prove the full searchd cross-build is green on this fork for our branch.
+# At this point iouring.cpp compiles in stub mode (WITH_LIBURING off). Once the build
+# infra is confirmed, we vendor liburing and turn the feature on.
+
+on:
+  push:
+    branches: [ feat/io-uring-disk-io ]
+    paths:
+      - 'src/**'
+      - 'cmake/**'
+      - 'CMakeLists.txt'
+      - '.github/workflows/iouring_build.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    uses: ./.github/workflows/build_template.yml
+    with:
+      CTEST_CONFIGURATION_TYPE: "Debug"
+      artifact_name: iouring_searchd_debug
+      cache_key: build_linux_iouring_debug_x86_64
+      artifact_list: "build/xml build/src/searchd build/src/indexer build/src/indextool build/CMakeFiles/CMake*.log"
+      cmake_command: |
+        export CMAKE_TOOLCHAIN_FILE=$(pwd)/dist/build_dockers/cross/linux.cmake
+        ctest -VV -S misc/ctest/gltest.cmake --no-compress-output
