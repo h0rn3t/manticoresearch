@@ -19,8 +19,13 @@ jobs:
     uses: ./.github/workflows/build_template.yml
     with:
       CTEST_CONFIGURATION_TYPE: "Debug"
+      # Disable unity build: adding/moving the io_uring TUs reshuffles unity chunks,
+      # which makes the linker pull previously-dead members of librepli_stuff (libssh)
+      # and libodbc (libltdl) that are not linkable in the CI sysroot. A non-unity
+      # build keeps the link graph equivalent to a clean build.
+      UNITY_BUILD: 0
       artifact_name: iouring_searchd_debug
-      cache_key: build_linux_iouring_debug_x86_64
+      cache_key: build_linux_iouring_debug_x86_64_nounity
       artifact_list: "build/xml build/src/searchd build/src/indexer build/src/indextool build/CMakeFiles/CMake*.log"
       cmake_command: |
         export CMAKE_TOOLCHAIN_FILE=$(pwd)/dist/build_dockers/cross/linux.cmake
