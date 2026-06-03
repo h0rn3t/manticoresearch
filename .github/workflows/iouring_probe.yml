@@ -1,0 +1,68 @@
+name: 🧪 io_uring probe
+
+# Phase 1 of the io_uring disk-read feature: prove io_uring works on a native
+# x86_64 GitHub runner and compile/run the standalone backend module there.
+# This de-risks the full benchmark before investing in the heavy searchd build.
+
+on:
+  push:
+    branches: [ feat/io-uring-disk-io ]
+    paths:
+      - 'src/iouring.*'
+      - 'openspec/changes/add-io-uring-disk-io/smoke/**'
+      - '.github/workflows/iouring_probe.yml'
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install liburing + toolchain
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq liburing-dev g++
+
+      - name: Environment facts
+        run: |
+          {
+            echo "## io_uring environment"
+            echo '```'
+            echo "kernel: $(uname -r)  arch: $(uname -m)"
+            echo "liburing-dev: $(dpkg -query -W -f='${Version}' liburing-dev 2>/dev/null)"
+            # kernel.io_uring_disabled: 0=on, 1=on-for-privileged, 2=fully off
+            echo "kernel.io_uring_disabled: $(cat /proc/sys/kernel/io_uring_disabled 2>/dev/null || echo 'sysctl absent (older kernel)')"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Smoke test (raw liburing)
+        run: |
+          cd openspec/changes/add-io-uring-disk-io/smoke
+          cc uring_smoke.c -o /tmp/smoke -luring
+          /tmp/smoke | tee /tmp/smoke.out
+          {
+            echo "### Raw io_uring smoke"
+            echo '```'
+            cat /tmp/smoke.out
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Backend module test (HAVE_IO_URING=1)
+        run: |
+          cd openspec/changes/add-io-uring-disk-io/smoke
+          g++ -std=c++17 -Wall -Wextra iouring_unit.cpp ../../../../src/iouring.cpp \
+              -DHAVE_IO_URING=1 -I../../../../src -luring -lpthread -o /tmp/iou_unit
+          /tmp/iou_unit | tee /tmp/iou_unit.out
+          {
+            echo "### Backend module (src/iouring.cpp)"
+            echo '```'
+            cat /tmp/iou_unit.out
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fallback stub compiles (no HAVE_IO_URING)
+        run: |
+          g++ -std=c++17 -Wall -Wextra -c src/iouring.cpp -o /tmp/iouring_stub.o
+          echo "stub branch compiled OK (this is the non-Linux / io_uring-off path)"

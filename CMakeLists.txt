@@ -415,6 +415,11 @@ with_menu ( ZSTD "libzstd" "for compressed networking" )
 dl_package ( ZSTD "zstd" )
 win_install ( ZSTD daemon )
 
+# Support for io_uring async disk reads (Linux-only). Auto-detected; off elsewhere.
+if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+	with_menu_libname ( liburing liburing "liburing" "for async io_uring disk reads (Linux)" )
+endif ()
+
 set ( MANTICORE_PREFER_HOMEBREW_CURL ON CACHE BOOL "Prefer Homebrew curl over Apple SDK curl on macOS" )
 if (CMAKE_SYSTEM_NAME STREQUAL Darwin AND MANTICORE_PREFER_HOMEBREW_CURL)
 	set ( _curl_should_prefer_homebrew TRUE )

@@ -73,7 +73,7 @@ add_library ( lmanticore STATIC sphinx.cpp sphinxutils.cpp
 		global_idf.cpp docstore.cpp lz4/lz4.c lz4/lz4hc.c snippetfunctor.cpp snippetindex.cpp
 		snippetstream.cpp snippetpassage.cpp threadutils.cpp sphinxversion.cpp datareader.cpp
 		indexformat.cpp indexsettings.cpp fileutils.cpp threads_detached.cpp hazard_pointer.cpp
-		task_info.cpp mini_timer.cpp fileio.cpp memio.cpp queryprofile.cpp columnarfilter.cpp columnargrouper.cpp
+		task_info.cpp mini_timer.cpp fileio.cpp iouring.cpp memio.cpp queryprofile.cpp columnarfilter.cpp columnargrouper.cpp
 		columnarlib.cpp collation.cpp histogram.cpp
 		timeout_queue.cpp columnarrt.cpp columnarmisc.cpp exprtraits.cpp columnarexpr.cpp
 		sphinx_alter.cpp columnarsort.cpp binlog.cpp chunksearchctx.cpp client_task_info.cpp
@@ -249,6 +249,13 @@ if (WITH_CURL)
 	else ()
 		target_link_libraries ( lsearchd PRIVATE CURL::libcurl )
 	endif ()
+endif ()
+
+# io_uring async disk reads (Linux-only). HAVE_IO_URING gates the io_uring code path;
+# without it the daemon falls back to blocking sphPread.
+if (WITH_LIBURING)
+	target_link_libraries ( lsearchd PRIVATE liburing::liburing )
+	target_compile_definitions ( lsearchd PRIVATE HAVE_IO_URING=1 )
 endif ()
 
 add_subdirectory ( perfetto )
