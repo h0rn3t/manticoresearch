@@ -1,0 +1,65 @@
+name: 📈 io_uring benchmark
+
+# Phase 2c: build searchd+indexer with io_uring, then on a native x86_64 runner
+# build a plain disk index (access=file doclists/hitlists) and measure query
+# throughput with io_uring on vs off, cold vs warm cache.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ feat/io-uring-disk-io ]
+    paths:
+      - '.github/workflows/iouring_bench.yml'
+      - 'misc/iouring_bench/**'
+
+jobs:
+  build:
+    uses: ./.github/workflows/build_template.yml
+    with:
+      CTEST_CONFIGURATION_TYPE: "RelWithDebInfo"
+      UNITY_BUILD: 0
+      artifact_name: iouring_bench_build
+      cache_key: build_linux_iouring_bench_x86_64
+      artifact_list: "build/src/searchd build/src/indexer build/src/indextool"
+      cmake_command: |
+        export CMAKE_TOOLCHAIN_FILE=$(pwd)/dist/build_dockers/cross/linux.cmake
+        export MANTICORE_BENCH_MINIMAL=1
+        ctest -VV -S misc/ctest/gltest.cmake --no-compress-output
+
+  bench:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download build
+        uses: actions/download-artifact@v4
+        with:
+          name: iouring_bench_build
+
+      - name: Prepare binaries
+        run: |
+          chmod +x build/src/searchd build/src/indexer build/src/indextool
+          echo "== ldd searchd ==" ; ldd build/src/searchd || true
+          echo "== searchd version ==" ; ./build/src/searchd --help >/dev/null 2>&1 || ./build/src/searchd -v || true
+          uname -r
+
+      - name: Run benchmark
+        env:
+          SEARCHD: ${{ github.workspace }}/build/src/searchd
+          INDEXER: ${{ github.workspace }}/build/src/indexer
+          NDOCS: "1500000"
+          CONC: "16"
+          DUR: "15"
+        run: |
+          bash misc/iouring_bench/run.sh | tee bench_result.md
+          cat bench_result.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload searchd log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: iouring_bench_logs
+          path: /tmp/iou/*.log
+          if-no-files-found: ignore
