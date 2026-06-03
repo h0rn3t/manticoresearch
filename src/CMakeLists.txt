@@ -73,7 +73,7 @@ add_library ( lmanticore STATIC sphinx.cpp sphinxutils.cpp
 		global_idf.cpp docstore.cpp lz4/lz4.c lz4/lz4hc.c snippetfunctor.cpp snippetindex.cpp
 		snippetstream.cpp snippetpassage.cpp threadutils.cpp sphinxversion.cpp datareader.cpp
 		indexformat.cpp indexsettings.cpp fileutils.cpp threads_detached.cpp hazard_pointer.cpp
-		task_info.cpp mini_timer.cpp fileio.cpp iouring.cpp memio.cpp queryprofile.cpp columnarfilter.cpp columnargrouper.cpp
+		task_info.cpp mini_timer.cpp fileio.cpp memio.cpp queryprofile.cpp columnarfilter.cpp columnargrouper.cpp
 		columnarlib.cpp collation.cpp histogram.cpp
 		timeout_queue.cpp columnarrt.cpp columnarmisc.cpp exprtraits.cpp columnarexpr.cpp
 		sphinx_alter.cpp columnarsort.cpp binlog.cpp chunksearchctx.cpp client_task_info.cpp
@@ -214,7 +214,7 @@ add_library ( lsearchd OBJECT searchdha.cpp http/http_parser.c searchdhttp.cpp
 		sphinxql_debug.cpp sphinxql_second.cpp stackmock.cpp docs_collector.cpp index_rotator.cpp config_reloader.cpp netpoll.cpp
 		pollable_event.cpp netfetch.cpp searchdbuddy.cpp searchdhttpcompat.cpp sphinxql_extra.cpp searchdreplication.cpp sphinxjsonquery.cpp
 		frontendschema.cpp compressed_http.cpp debug_cmds.cpp jsonqueryfilter.cpp dynamic_idx.cpp sphinxexcerpt.cpp searchdexpr.cpp querystats.cpp
-		facetutils.cpp
+		facetutils.cpp iouring.cpp iouring_coro.cpp
 		)
 target_sources ( lsearchd PUBLIC ${SEARCHD_SRCS_TESTABLE} ${SEARCHD_H} ${SEARCHD_BISON} ${SEARCHD_FLEX} )
 add_library ( digest_sha1 digest_sha1.cpp )

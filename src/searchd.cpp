@@ -105,6 +105,7 @@ int						g_iReadTimeoutS		= 5;	// sec
 int						g_iWriteTimeoutS	= 5;	// sec
 bool					g_bTimeoutEachPacket = true;
 bool					g_bIoUring			= true;	// async disk reads via io_uring (Linux); auto-disabled if unavailable
+void InstallIoUringReadHook();	// defined in iouring_coro.cpp (lsearchd); wires io_uring into fileio reads
 int						g_iClientTimeoutS	= 300;
 int						g_iClientQlTimeoutS	= 900;	// sec, ql interactive clients
 int						g_iClientQlWaitTimeoutS	= 28800;	// sec, ql non-interactive clients
@@ -439,7 +440,7 @@ void Shutdown () REQUIRES ( MainThread ) NO_THREAD_SAFETY_ANALYSIS
 
 	SHUTINFO << "Shutdown main work pool ...";
 	StopGlobalWorkPool();
-	StopIoUring();
+	IoUring::StopIoUring();
 	sd::extend30s();
 
 	SHUTINFO << "Remove local tables list ...";
@@ -15666,9 +15667,11 @@ int WINAPI ServiceMain ( int argc, char **argv ) EXCLUDES (MainThread)
 	// Start the io_uring backend after the daemonizing fork (threads do not survive fork).
 	if ( g_bIoUring )
 	{
-		if ( StartIoUring() )
+		if ( IoUring::StartIoUring() )
+		{
+			InstallIoUringReadHook();
 			sphInfo ( "io_uring: enabled (async disk reads)" );
-		else
+		} else
 			sphInfo ( "io_uring: requested but unavailable (kernel/seccomp); using blocking reads" );
 	} else
 		sphInfo ( "io_uring: disabled by config" );

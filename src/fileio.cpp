@@ -12,8 +12,6 @@
 
 #include "fileio.h"
 #include "sphinxint.h"
-#include "coroutine.h"
-#include "iouring.h"
 #include <sys/stat.h>
 
 #define SPH_READ_NOPROGRESS_CHUNK (32768*1024)
@@ -1121,42 +1119,20 @@ int sphPread ( int iFD, void * pBuf, int iBytes, SphOffset_t iOffset )
 #endif // _WIN32
 
 
+// Optional async-read hook, installed by the searchd-only io_uring glue
+// (iouring_coro.cpp). Kept as an indirection so this broadly-linked TU does not
+// pull the coroutine / liburing graph into tools like indexer; when unset
+// (indexer, non-coroutine contexts, io_uring off) reads stay synchronous.
+static PreadCoroHook_fn g_pPreadCoroHook = nullptr;
+
+void SetPreadCoroHook ( PreadCoroHook_fn fnHook )
+{
+	g_pPreadCoroHook = fnHook;
+}
+
 int sphPreadCoro ( int iFD, void * pBuf, int iBytes, SphOffset_t iOffset )
 {
-	// Only worth the async dance inside a coroutine with the backend running.
-	// Outside a coroutine (service tasks, load) we must read synchronously.
-	if ( !Threads::Coro::CurrentWorker() || !IoUring::IsIoUringAvailable() )
-		return sphPread ( iFD, pBuf, iBytes, iOffset );
-
-	auto tWaker = Threads::CreateWaker(); // waker for the current fiber
-	int iResult = 0;
-	bool bSubmitted = false;
-
-	// Arm the async read *inside* YieldWith, i.e. after the fiber has parked, so the
-	// completion (which may fire immediately on the reaper thread) cannot be lost.
-	Threads::Coro::YieldWith ( [&] () NO_THREAD_SAFETY_ANALYSIS
-	{
-		bSubmitted = IoUring::SubmitRead ( iFD, pBuf, (unsigned)iBytes, iOffset,
-			[&iResult, tWaker] ( IoUring::ReadResult_t tRes )
-			{
-				iResult = tRes.m_iRes; // >=0 bytes, <0 is -errno (mirrors pread)
-				tWaker.Wake();
-			} );
-
-		// Ring full / backend down: nothing will wake us, so wake immediately and
-		// let the post-resume code fall back to a synchronous read.
-		if ( !bSubmitted )
-			tWaker.Wake();
-	} );
-
-	if ( !bSubmitted )
-		return sphPread ( iFD, pBuf, iBytes, iOffset );
-
-	CSphIOStats * pIOStats = GetIOStats();
-	if ( pIOStats && iResult>0 )
-	{
-		pIOStats->m_iReadOps++;
-		pIOStats->m_iReadBytes += iBytes;
-	}
-	return iResult;
+	if ( g_pPreadCoroHook )
+		return g_pPreadCoroHook ( iFD, pBuf, iBytes, iOffset );
+	return sphPread ( iFD, pBuf, iBytes, iOffset );
 }
