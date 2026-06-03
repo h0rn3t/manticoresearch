@@ -455,12 +455,15 @@ with_menu_libname ( CURL libcurl "libCURL" "for enhanced network communication" 
 dl_package_comp ( CURL libcurl "curl" )
 win_install_lib ( CURL libcurl daemon )
 
-# Opt-out used by the io_uring benchmark build: static unixODBC (libodbc.a) in the
-# CI sysroot references libltdl, which is not present there as a linkable library, so
-# the indexer link fails once object/link order changes. ODBC is irrelevant to the
-# benchmark, so allow disabling it without touching the shared ctest driver.
-if (DEFINED ENV{MANTICORE_DISABLE_ODBC} AND NOT "$ENV{MANTICORE_DISABLE_ODBC}" STREQUAL "0")
+# Opt-out used by the io_uring benchmark build. The CI sysroot ships static
+# third-party libs whose transitive deps are not linkable there (unixODBC -> libltdl,
+# static libcurl -> libssh SCP/SFTP). These were dead code before; reorganizing the
+# objects for io_uring changes link reachability and pulls them in, breaking the link.
+# None of ODBC / CURL matter for benchmarking disk reads, so allow disabling them
+# without touching the shared ctest driver.
+if (DEFINED ENV{MANTICORE_BENCH_MINIMAL} AND NOT "$ENV{MANTICORE_BENCH_MINIMAL}" STREQUAL "0")
 	set ( WITH_ODBC 0 CACHE BOOL "" FORCE )
+	set ( WITH_CURL 0 CACHE BOOL "" FORCE )
 endif ()
 
 # ODBC and it's dynamic linking

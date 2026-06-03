@@ -29,5 +29,5 @@ jobs:
       artifact_list: "build/xml build/src/searchd build/src/indexer build/src/indextool build/CMakeFiles/CMake*.log"
       cmake_command: |
         export CMAKE_TOOLCHAIN_FILE=$(pwd)/dist/build_dockers/cross/linux.cmake
-        export MANTICORE_DISABLE_ODBC=1
+        export MANTICORE_BENCH_MINIMAL=1
         ctest -VV -S misc/ctest/gltest.cmake --no-compress-output
