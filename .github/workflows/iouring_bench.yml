@@ -40,15 +40,19 @@ jobs:
 
       - name: Prepare binaries
         run: |
-          chmod +x build/src/searchd build/src/indexer build/src/indextool
-          echo "== ldd searchd ==" ; ldd build/src/searchd || true
-          echo "== searchd version ==" ; ./build/src/searchd --help >/dev/null 2>&1 || ./build/src/searchd -v || true
+          # upload-artifact strips the common path prefix, so locate the binaries.
+          SEARCHD=$(find "$PWD" -type f -name searchd | head -1)
+          INDEXER=$(find "$PWD" -type f -name indexer | head -1)
+          echo "found searchd=$SEARCHD indexer=$INDEXER"
+          test -n "$SEARCHD" && test -n "$INDEXER" || { echo "binaries not found"; find "$PWD" -maxdepth 3 -type f | head -50; exit 1; }
+          chmod +x "$SEARCHD" "$INDEXER"
+          echo "SEARCHD=$SEARCHD" >> "$GITHUB_ENV"
+          echo "INDEXER=$INDEXER" >> "$GITHUB_ENV"
+          echo "== ldd searchd ==" ; ldd "$SEARCHD" || true
           uname -r
 
       - name: Run benchmark
         env:
-          SEARCHD: ${{ github.workspace }}/build/src/searchd
-          INDEXER: ${{ github.workspace }}/build/src/indexer
           NDOCS: "1500000"
           CONC: "16"
           DUR: "15"
