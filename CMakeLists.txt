@@ -416,8 +416,19 @@ dl_package ( ZSTD "zstd" )
 win_install ( ZSTD daemon )
 
 # Support for io_uring async disk reads (Linux-only). Auto-detected; off elsewhere.
+# Prefer system liburing (native builds); fall back to a vendored build (cross toolchain
+# sysroot has no liburing). Either way produces the liburing::liburing target.
 if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
-	with_menu_libname ( liburing liburing "liburing" "for async io_uring disk reads (Linux)" )
+	if (NOT DEFINED WITH_LIBURING OR WITH_LIBURING)
+		find_package ( liburing QUIET )
+		if (NOT liburing_FOUND)
+			include ( Getliburing )
+		endif ()
+		if (liburing_FOUND OR TARGET liburing::liburing)
+			set ( WITH_LIBURING ON CACHE BOOL "link with liburing for async io_uring disk reads" )
+		endif ()
+	endif ()
+	add_feature_info ( liburing WITH_LIBURING "for async io_uring disk reads (Linux)" )
 endif ()
 
 set ( MANTICORE_PREFER_HOMEBREW_CURL ON CACHE BOOL "Prefer Homebrew curl over Apple SDK curl on macOS" )

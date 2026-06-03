@@ -96,3 +96,5 @@
 /dist/docker
 /.env
 /dump.sql
+
+openspec/

@@ -270,6 +270,12 @@ bool SeekAndWarn ( int iFD, SphOffset_t iPos, const char * szWarnPrefix );
 // atomic seek+read wrapper
 int sphPread ( int iFD, void * pBuf, int iBytes, SphOffset_t iOffset );
 
+// coroutine-aware seek+read: when running inside a coroutine and the io_uring
+// backend is up, submits the read to io_uring and yields the fiber until it
+// completes (freeing the worker thread); otherwise falls back to blocking sphPread.
+// Same semantics/return value as sphPread.
+int sphPreadCoro ( int iFD, void * pBuf, int iBytes, SphOffset_t iOffset );
+
 /// set throttling options
 void sphSetThrottling ( int iMaxIOps, int iMaxIOSize );
 

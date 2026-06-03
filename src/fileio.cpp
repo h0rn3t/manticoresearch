@@ -12,6 +12,8 @@
 
 #include "fileio.h"
 #include "sphinxint.h"
+#include "coroutine.h"
+#include "iouring.h"
 #include <sys/stat.h>
 
 #define SPH_READ_NOPROGRESS_CHUNK (32768*1024)
@@ -305,7 +307,8 @@ void CSphReader::UpdateCache()
 	int iReadLen = Min ( m_iSizeHint, m_iBufSize );
 
 	m_iBuffPos = 0;
-	m_iBuffUsed = sphPread ( m_iFD, m_pBuff, iReadLen, iNewPos ); // FIXME! what about throttling?
+	// io_uring async read when in a coroutine + backend up, else blocking sphPread.
+	m_iBuffUsed = sphPreadCoro ( m_iFD, m_pBuff, iReadLen, iNewPos ); // FIXME! what about throttling?
 
 	if ( m_iBuffUsed<0 )
 	{
@@ -1116,3 +1119,44 @@ int sphPread ( int iFD, void * pBuf, int iBytes, SphOffset_t iOffset )
 
 #endif // HAVE_PREAD
 #endif // _WIN32
+
+
+int sphPreadCoro ( int iFD, void * pBuf, int iBytes, SphOffset_t iOffset )
+{
+	// Only worth the async dance inside a coroutine with the backend running.
+	// Outside a coroutine (service tasks, load) we must read synchronously.
+	if ( !Threads::Coro::CurrentWorker() || !IoUring::IsIoUringAvailable() )
+		return sphPread ( iFD, pBuf, iBytes, iOffset );
+
+	auto tWaker = Threads::CreateWaker(); // waker for the current fiber
+	int iResult = 0;
+	bool bSubmitted = false;
+
+	// Arm the async read *inside* YieldWith, i.e. after the fiber has parked, so the
+	// completion (which may fire immediately on the reaper thread) cannot be lost.
+	Threads::Coro::YieldWith ( [&] () NO_THREAD_SAFETY_ANALYSIS
+	{
+		bSubmitted = IoUring::SubmitRead ( iFD, pBuf, (unsigned)iBytes, iOffset,
+			[&iResult, tWaker] ( IoUring::ReadResult_t tRes )
+			{
+				iResult = tRes.m_iRes; // >=0 bytes, <0 is -errno (mirrors pread)
+				tWaker.Wake();
+			} );
+
+		// Ring full / backend down: nothing will wake us, so wake immediately and
+		// let the post-resume code fall back to a synchronous read.
+		if ( !bSubmitted )
+			tWaker.Wake();
+	} );
+
+	if ( !bSubmitted )
+		return sphPread ( iFD, pBuf, iBytes, iOffset );
+
+	CSphIOStats * pIOStats = GetIOStats();
+	if ( pIOStats && iResult>0 )
+	{
+		pIOStats->m_iReadOps++;
+		pIOStats->m_iReadBytes += iBytes;
+	}
+	return iResult;
+}
