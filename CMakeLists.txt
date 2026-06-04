@@ -320,13 +320,20 @@ target_compile_options ( lextra INTERFACE $<${ONLYGNUCLANGCXX}:-fno-rtti>$<${MSC
 # so the compiler may autovectorize the hot search/scoring/postings loops. This is a hard CPU
 # requirement: the binary will SIGILL on pre-Haswell CPUs. Gated to x86_64 plus a compiler that
 # actually accepts the level, so arm64/macOS dev configs and older toolchains stay unaffected.
+#
+# -ffp-contract=off is REQUIRED here: x86-64-v3 brings FMA, and at -O2 the compiler contracts
+# a*b+c into a single fma with different last-bit rounding. The generic SSE2 baseline has no FMA
+# instruction so it never contracted; enabling v3 without this flag shifts BM25/IDF, expression
+# ranker and KNN-distance scores and breaks score-exact tests (test_184, test_205, test_253, knn).
+# Disabling contraction keeps floating-point bit-identical to upstream while preserving all the
+# integer SIMD wins (AVX2/BMI2/POPCNT) that actually accelerate the postings/bitmap hot path.
 string ( TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" _SIMD_PROC )
 if (_SIMD_PROC MATCHES "^(x86_64|amd64|x64)$")
 	include ( CheckCXXCompilerFlag )
 	check_cxx_compiler_flag ( "-march=x86-64-v3" HAVE_MARCH_X86_64_V3 )
 	if (HAVE_MARCH_X86_64_V3)
-		target_compile_options ( lextra INTERFACE $<${ONLYGNUCLANGC_CXX}:-march=x86-64-v3 -mtune=generic> )
-		message ( STATUS "SIMD baseline: -march=x86-64-v3 (AVX2/BMI2/FMA, Haswell 2013+)" )
+		target_compile_options ( lextra INTERFACE $<${ONLYGNUCLANGC_CXX}:-march=x86-64-v3 -mtune=generic -ffp-contract=off> )
+		message ( STATUS "SIMD baseline: -march=x86-64-v3 (AVX2/BMI2/FMA, Haswell 2013+), FMA contraction off" )
 	endif ()
 endif ()
 
