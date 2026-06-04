@@ -25,7 +25,7 @@ jobs:
       cmake_command: |
         mkdir build && cd build
         export BUNDLE_REPO_TYPE=dev
-        # DL_CURL: load libcurl at runtime (avoids static libcurl -> libssh link
-        # cascade in this sysroot). WITH_LIBURING is auto-enabled on Linux (vendored).
-        cmake -DPACK=1 -DPACK_BUNDLE=1 -DDL_CURL=1 ..
+        # Exact official linux deb recipe; WITH_LIBURING is auto-enabled on Linux
+        # (vendored). PACK_BUNDLE provides bundled deps that link cleanly.
+        cmake -DPACK=1 -DPACK_BUNDLE=1 ..
         cmake --build . --target package
