@@ -314,7 +314,7 @@ jobs:
       cmake_command: |
         export CMAKE_TOOLCHAIN_FILE=$(pwd)/dist/build_dockers/cross/linux.cmake
         export MANTICORE_DISABLE_ODBC=1
-        export MANTICORE_PREFER_SHARED_CURL=1
+        export MANTICORE_PREFER_SHARED_DL_LIBS=1
         ctest -VV -S misc/ctest/gltest.cmake --no-compress-output
 
   test_linux_debug:
@@ -342,7 +342,7 @@ jobs:
       cmake_command: |
         export CMAKE_TOOLCHAIN_FILE=$(pwd)/dist/build_dockers/cross/linux.cmake
         export MANTICORE_DISABLE_ODBC=1
-        export MANTICORE_PREFER_SHARED_CURL=1
+        export MANTICORE_PREFER_SHARED_DL_LIBS=1
         export PACK=1
         export PACK_KEEP_TESTS=1
         ctest -VV -S misc/ctest/gltest.cmake --no-compress-output

@@ -460,7 +460,7 @@ endif ()
 # runtime, like MySQL/ZSTD). That drops the static libssh edge while keeping curl
 # fully working — Buddy needs it (see IsCurlAvailable()), so disabling it is out.
 set ( _curl_saved_suffixes "${CMAKE_FIND_LIBRARY_SUFFIXES}" )
-if (DEFINED ENV{MANTICORE_PREFER_SHARED_CURL} AND NOT "$ENV{MANTICORE_PREFER_SHARED_CURL}" STREQUAL "0")
+if (DEFINED ENV{MANTICORE_PREFER_SHARED_DL_LIBS} AND NOT "$ENV{MANTICORE_PREFER_SHARED_DL_LIBS}" STREQUAL "0")
 	set ( CURL_USE_STATIC_LIBS OFF CACHE BOOL "" FORCE )
 	set ( CMAKE_FIND_LIBRARY_SUFFIXES .so .a )
 endif ()
@@ -545,9 +545,21 @@ endif ()
 
 win_install ( Mysql indexer )
 
-# PostgreSQL and it's dynamic linking
+# PostgreSQL and it's dynamic linking. Same static-vs-shared problem as CURL: the
+# project searches .a first, so find_package(PostgreSQL) picks libpq.a, which pulls
+# GSSAPI (gss_*) and pg_snprintf that aren't linkable in this sysroot. In the PACK
+# (release) build WITH_POSTGRESQL is on, so the indexer link fails. Put .so first
+# for the probe so dl_package auto-enables DL_POSTGRESQL (dlopen libpq at runtime,
+# like MySQL) — keeps the PG source connector working without the static libpq edge.
+set ( _pgsql_saved_suffixes "${CMAKE_FIND_LIBRARY_SUFFIXES}" )
+if (DEFINED ENV{MANTICORE_PREFER_SHARED_DL_LIBS} AND NOT "$ENV{MANTICORE_PREFER_SHARED_DL_LIBS}" STREQUAL "0")
+	set ( CMAKE_FIND_LIBRARY_SUFFIXES .so .a )
+endif ()
+
 with_menu ( PostgreSQL "pgsql" "for indexing postgresql sources with indexer" )
 dl_package ( PostgreSQL "pgsql" )
+set ( CMAKE_FIND_LIBRARY_SUFFIXES "${_pgsql_saved_suffixes}" )
+unset ( _pgsql_saved_suffixes )
 win_install ( PostgreSQL indexer )
 
 # Storing compiler version
