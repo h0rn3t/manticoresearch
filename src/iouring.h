@@ -46,9 +46,15 @@ using OnComplete_fn = std::function<void ( ReadResult_t )>;
 bool IsIoUringAvailable();
 
 /// Start the global io_uring backend (ring + reaper thread).
+/// bSQPoll requests kernel-side submission polling (IORING_SETUP_SQPOLL), which
+/// avoids a submit syscall per read at the cost of a busy kernel poll thread;
+/// it falls back to normal mode if the kernel refuses it.
 /// Returns false and leaves the backend disabled if io_uring is unavailable;
 /// callers must then use the synchronous path. Idempotent.
-bool StartIoUring ( unsigned uQueueDepth = 256 );
+bool StartIoUring ( unsigned uQueueDepth = 1024, bool bSQPoll = false );
+
+/// True if the running backend negotiated SQPOLL (for diagnostics/logging).
+bool IoUringUsesSQPoll();
 
 /// Stop the reaper thread and tear down the ring. Idempotent.
 void StopIoUring();

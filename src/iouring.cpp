@@ -39,6 +39,7 @@ namespace
 		std::thread		m_tReaper;
 		std::atomic<bool> m_bRunning { false };
 		bool			m_bRingInit = false;
+		bool			m_bSQPoll = false;
 	};
 
 	State_t g_tState;
@@ -57,20 +58,33 @@ namespace
 				break;
 			}
 
-			uint64_t uData = io_uring_cqe_get_data64 ( pCqe );
-			int iRes = pCqe->res;
-			io_uring_cqe_seen ( &g_tState.m_tRing, pCqe );
-
-			if ( uData==STOP_SENTINEL )
-				break;
-
-			auto * pComp = reinterpret_cast<Completion_t *> ( uData );
-			if ( pComp )
+			// Drain every completion available in this wakeup in one batch, then
+			// advance the CQ head once - far cheaper than one wait_cqe per CQE.
+			bool bStop = false;
+			unsigned uHead = 0;
+			unsigned uCount = 0;
+			io_uring_for_each_cqe ( &g_tState.m_tRing, uHead, pCqe )
 			{
-				if ( pComp->m_fnDone )
-					pComp->m_fnDone ( ReadResult_t { iRes } );
-				delete pComp;
+				++uCount;
+				uint64_t uData = io_uring_cqe_get_data64 ( pCqe );
+				int iRes = pCqe->res;
+				if ( uData==STOP_SENTINEL )
+				{
+					bStop = true;
+					continue;
+				}
+				auto * pComp = reinterpret_cast<Completion_t *> ( uData );
+				if ( pComp )
+				{
+					if ( pComp->m_fnDone )
+						pComp->m_fnDone ( ReadResult_t { iRes } );
+					delete pComp;
+				}
 			}
+			io_uring_cq_advance ( &g_tState.m_tRing, uCount );
+
+			if ( bStop )
+				break;
 		}
 	}
 
@@ -92,7 +106,7 @@ bool IsIoUringAvailable()
 	return bAvailable;
 }
 
-bool StartIoUring ( unsigned uQueueDepth )
+bool StartIoUring ( unsigned uQueueDepth, bool bSQPoll )
 {
 	if ( g_tState.m_bRunning.load ( std::memory_order_acquire ) )
 		return true;
@@ -100,7 +114,23 @@ bool StartIoUring ( unsigned uQueueDepth )
 	if ( !IsIoUringAvailable() )
 		return false;
 
-	int iRc = io_uring_queue_init ( uQueueDepth, &g_tState.m_tRing, 0 );
+	int iRc = -1;
+	g_tState.m_bSQPoll = false;
+
+	if ( bSQPoll )
+	{
+		io_uring_params tParams {};
+		tParams.flags = IORING_SETUP_SQPOLL;
+		tParams.sq_thread_idle = 1000; // ms before the kernel SQ thread parks when idle
+		iRc = io_uring_queue_init_params ( uQueueDepth, &g_tState.m_tRing, &tParams );
+		if ( iRc>=0 )
+			g_tState.m_bSQPoll = true;
+		// else: SQPOLL refused (privileges/kernel) - fall through to normal init.
+	}
+
+	if ( iRc<0 )
+		iRc = io_uring_queue_init ( uQueueDepth, &g_tState.m_tRing, 0 );
+
 	if ( iRc<0 )
 		return false;
 
@@ -108,6 +138,11 @@ bool StartIoUring ( unsigned uQueueDepth )
 	g_tState.m_bRunning.store ( true, std::memory_order_release );
 	g_tState.m_tReaper = std::thread ( ReaperLoop );
 	return true;
+}
+
+bool IoUringUsesSQPoll()
+{
+	return g_tState.m_bSQPoll;
 }
 
 void StopIoUring()
@@ -173,7 +208,8 @@ bool SubmitRead ( int iFD, void * pBuf, unsigned iBytes, int64_t iOffset, OnComp
 namespace IoUring
 {
 	bool IsIoUringAvailable() { return false; }
-	bool StartIoUring ( unsigned ) { return false; }
+	bool StartIoUring ( unsigned, bool ) { return false; }
+	bool IoUringUsesSQPoll() { return false; }
 	void StopIoUring() {}
 	bool SubmitRead ( int, void *, unsigned, int64_t, OnComplete_fn ) { return false; }
 }
