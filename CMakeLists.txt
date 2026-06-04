@@ -462,8 +462,13 @@ win_install_lib ( CURL libcurl daemon )
 # None of ODBC / CURL matter for benchmarking disk reads, so allow disabling them
 # without touching the shared ctest driver.
 if (DEFINED ENV{MANTICORE_BENCH_MINIMAL} AND NOT "$ENV{MANTICORE_BENCH_MINIMAL}" STREQUAL "0")
+	# Lean build: drop the indexer source connectors / curl whose bundled static
+	# libs carry transitive deps (libltdl, libssh, gssapi, libpq) that aren't fully
+	# linked in this sysroot and break once io_uring shifts the static link order.
+	# Full-text search with io_uring is unaffected.
 	set ( WITH_ODBC 0 CACHE BOOL "" FORCE )
 	set ( WITH_CURL 0 CACHE BOOL "" FORCE )
+	set ( WITH_POSTGRESQL 0 CACHE BOOL "" FORCE )
 endif ()
 
 # ODBC and it's dynamic linking

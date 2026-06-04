@@ -25,7 +25,9 @@ jobs:
       cmake_command: |
         mkdir build && cd build
         export BUNDLE_REPO_TYPE=dev
-        # Exact official linux deb recipe; WITH_LIBURING is auto-enabled on Linux
-        # (vendored). PACK_BUNDLE provides bundled deps that link cleanly.
+        # Lean io_uring package: drop ODBC/CURL/PostgreSQL connectors whose bundled
+        # static libs have unlinked transitive deps that break once io_uring shifts
+        # the static link order. Full-text search + io_uring unaffected.
+        export MANTICORE_BENCH_MINIMAL=1
         cmake -DPACK=1 -DPACK_BUNDLE=1 ..
         cmake --build . --target package
