@@ -3,6 +3,7 @@
 # Columns: id <tab> gid <tab> title
 # A large vocabulary + many docs yields sizable doclists/hitlists on disk, which
 # is exactly what access_doclists=file / access_hitlists=file read on demand.
+import itertools
 import random
 import sys
 
@@ -15,11 +16,13 @@ rng = random.Random(1234567)  # deterministic: same index for every run
 
 # Zipf-ish vocabulary so some terms have long doclists (the interesting reads).
 vocab = [f"w{i}" for i in range(vocab_size)]
-weights = [1.0 / (i + 1) for i in range(vocab_size)]
+# Precompute cumulative weights ONCE; passing cum_weights makes choices O(k log n)
+# per call instead of recomputing the cumulative table every call.
+cum_weights = list(itertools.accumulate(1.0 / (i + 1) for i in range(vocab_size)))
 
 with open(out, "w", buffering=1 << 20) as f:
     for doc_id in range(1, n_docs + 1):
-        words = rng.choices(vocab, weights=weights, k=words_per_doc)
+        words = rng.choices(vocab, cum_weights=cum_weights, k=words_per_doc)
         gid = rng.randint(1, 1000)
         f.write(f"{doc_id}\t{gid}\t{' '.join(words)}\n")
 
