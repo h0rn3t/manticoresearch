@@ -1,0 +1,66 @@
+name: 🚀 io_uring release
+
+# Publishes a GitHub Release with the io_uring .deb packages, reusing the
+# artifact from a prior 'io_uring package (deb)' run (no rebuild).
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_run_id:
+        description: "run id that produced the iouring_deb artifact"
+        required: false
+        default: "26943302734"
+      tag:
+        description: "release tag"
+        required: false
+        default: "v0.0.1-io_uring"
+  push:
+    branches: [ feat/io-uring-disk-io ]
+    paths:
+      - '.github/workflows/iouring_release.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download package artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: iouring_deb
+          path: deb
+          run-id: ${{ github.event.inputs.build_run_id || '26943302734' }}
+          github-token: ${{ github.token }}
+
+      - name: Unpack debs
+        run: |
+          cd deb
+          [ -f artifact.tar ] && tar xf artifact.tar
+          echo "== debs =="; ls -la build/*.deb
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.inputs.tag || 'v0.0.1-io_uring' }}
+        run: |
+          cd deb
+          gh release delete "$TAG" --repo "${{ github.repository }}" --yes --cleanup-tag 2>/dev/null || true
+          gh release create "$TAG" build/*.deb \
+            --repo "${{ github.repository }}" \
+            --target "${{ github.sha }}" \
+            --title "Manticore + io_uring (Ubuntu 22.04/24.04, amd64)" \
+            --notes "Lean build of branch \`feat/io-uring-disk-io\` with io_uring async disk reads for FILE-mode doclists/hitlists.
+
+          **Install (Ubuntu 22.04/24.04, amd64):**
+          \`\`\`bash
+          sudo apt install ./manticore-common_*_all.deb ./manticore-icudata-*.deb \\
+                           ./manticore-server-core_*_amd64.deb ./manticore-server_*_amd64.deb \\
+                           ./manticore-tools_*_amd64.deb
+          \`\`\`
+          Then set \`io_uring = 1\` in the \`searchd { }\` section of /etc/manticoresearch/manticore.conf and \`sudo systemctl enable --now manticore\`. See misc/iouring_bench/DEPLOY.md.
+
+          Note: lean package — ODBC/CURL/PostgreSQL source connectors disabled; liburing statically vendored; falls back to pread if io_uring is unavailable."
