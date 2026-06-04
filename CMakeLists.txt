@@ -315,6 +315,21 @@ target_compile_options ( lextra INTERFACE $<${CLANGWIN}:-Wstrict-aliasing -Wno-f
 # disable rtti
 target_compile_options ( lextra INTERFACE $<${ONLYGNUCLANGCXX}:-fno-rtti>$<${MSCXX}:/GR-> ) # no rtti
 
+# amd64-only SIMD baseline. Now that the build targets x86_64 Linux exclusively, raise the
+# microarchitecture floor to x86-64-v3 (AVX2 + BMI2 + FMA + POPCNT, i.e. Haswell 2013+ / Zen 1+)
+# so the compiler may autovectorize the hot search/scoring/postings loops. This is a hard CPU
+# requirement: the binary will SIGILL on pre-Haswell CPUs. Gated to x86_64 plus a compiler that
+# actually accepts the level, so arm64/macOS dev configs and older toolchains stay unaffected.
+string ( TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" _SIMD_PROC )
+if (_SIMD_PROC MATCHES "^(x86_64|amd64|x64)$")
+	include ( CheckCXXCompilerFlag )
+	check_cxx_compiler_flag ( "-march=x86-64-v3" HAVE_MARCH_X86_64_V3 )
+	if (HAVE_MARCH_X86_64_V3)
+		target_compile_options ( lextra INTERFACE $<${ONLYGNUCLANGC_CXX}:-march=x86-64-v3 -mtune=generic> )
+		message ( STATUS "SIMD baseline: -march=x86-64-v3 (AVX2/BMI2/FMA, Haswell 2013+)" )
+	endif ()
+endif ()
+
 if (WIN32)
 	target_compile_definitions ( lextra INTERFACE
 			_CRT_SECURE_NO_DEPRECATE=1
