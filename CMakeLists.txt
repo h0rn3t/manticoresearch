@@ -451,18 +451,24 @@ if (CMAKE_SYSTEM_NAME STREQUAL Darwin AND MANTICORE_PREFER_HOMEBREW_CURL)
 	unset ( _curl_should_prefer_homebrew )
 endif ()
 
-# In the CI cross sysroot find_package(CURL) prefers the static libcurl.a, which
-# references libssh (SCP/SFTP) — not linkable here, so once the io_uring object
-# reorg makes those objects reachable the searchd link fails on undefined ssh_* /
-# sftp_* symbols. Prefer the shared libcurl so dl_package_comp below auto-enables
-# DL_CURL (dlopen at runtime, like MySQL/ZSTD); that drops the static libssh edge
-# while keeping curl fully working (Buddy needs it — see IsCurlAvailable()).
+# In the CI cross sysroot the project searches static libs (.a) first, so
+# find_package(CURL) picks libcurl.a, which references libssh (SCP/SFTP) — not
+# linkable here. Once the io_uring object reorg makes those objects reachable the
+# searchd link fails on undefined ssh_*/sftp_* symbols. Put .so first just for the
+# CURL probe (as cmake/FindMysql.cmake does for libmysqlclient) so the shared
+# libcurl is found and dl_package_comp below auto-enables DL_CURL (dlopen at
+# runtime, like MySQL/ZSTD). That drops the static libssh edge while keeping curl
+# fully working — Buddy needs it (see IsCurlAvailable()), so disabling it is out.
+set ( _curl_saved_suffixes "${CMAKE_FIND_LIBRARY_SUFFIXES}" )
 if (DEFINED ENV{MANTICORE_PREFER_SHARED_CURL} AND NOT "$ENV{MANTICORE_PREFER_SHARED_CURL}" STREQUAL "0")
 	set ( CURL_USE_STATIC_LIBS OFF CACHE BOOL "" FORCE )
+	set ( CMAKE_FIND_LIBRARY_SUFFIXES .so .a )
 endif ()
 
 with_menu_libname ( CURL libcurl "libCURL" "for enhanced network communication" )
 dl_package_comp ( CURL libcurl "curl" )
+set ( CMAKE_FIND_LIBRARY_SUFFIXES "${_curl_saved_suffixes}" )
+unset ( _curl_saved_suffixes )
 win_install_lib ( CURL libcurl daemon )
 
 # Opt-out used by the io_uring benchmark build. The CI sysroot ships static
