@@ -37,14 +37,17 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: iouring_bench_build
+          path: artifact_bin
 
       - name: Prepare binaries
         run: |
-          # upload-artifact strips the common path prefix, so locate the binaries.
-          SEARCHD=$(find "$PWD" -type f -name searchd | head -1)
-          INDEXER=$(find "$PWD" -type f -name indexer | head -1)
-          echo "found searchd=$SEARCHD indexer=$INDEXER"
-          test -n "$SEARCHD" && test -n "$INDEXER" || { echo "binaries not found"; find "$PWD" -maxdepth 3 -type f | head -50; exit 1; }
+          # upload_artifact_with_retries wraps files in artifact.tar inside the zip.
+          if [ -f artifact_bin/artifact.tar ]; then tar xf artifact_bin/artifact.tar -C artifact_bin; fi
+          echo "== artifact tree =="; find artifact_bin -type f | head -50
+          SEARCHD=$(find artifact_bin -type f -name searchd | head -1)
+          INDEXER=$(find artifact_bin -type f -name indexer | head -1)
+          echo "searchd=$SEARCHD indexer=$INDEXER"
+          test -n "$SEARCHD" && test -n "$INDEXER" || { echo "binaries not found"; exit 1; }
           chmod +x "$SEARCHD" "$INDEXER"
           echo "SEARCHD=$SEARCHD" >> "$GITHUB_ENV"
           echo "INDEXER=$INDEXER" >> "$GITHUB_ENV"

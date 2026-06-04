@@ -9,7 +9,7 @@ on:
       build_run_id:
         description: "run id that produced the iouring_bench_build artifact"
         required: false
-        default: "26919774010"
+        default: "26922015995"
   push:
     branches: [ feat/io-uring-disk-io ]
     paths:
@@ -28,7 +28,7 @@ jobs:
         with:
           name: iouring_bench_build
           path: artifact_bin
-          run-id: ${{ github.event.inputs.build_run_id || '26919774010' }}
+          run-id: ${{ github.event.inputs.build_run_id || '26922015995' }}
           github-token: ${{ github.token }}
 
       - name: Prepare binaries
