@@ -305,8 +305,11 @@ void CSphReader::UpdateCache()
 	int iReadLen = Min ( m_iSizeHint, m_iBufSize );
 
 	m_iBuffPos = 0;
-	// io_uring async read when in a coroutine + backend up, else blocking sphPread.
-	m_iBuffUsed = sphPreadCoro ( m_iFD, m_pBuff, iReadLen, iNewPos ); // FIXME! what about throttling?
+	// io_uring async read only for readers explicitly marked async-safe (per-query
+	// doclist/hitlist readers); shared readers (docstore) stay synchronous.
+	m_iBuffUsed = m_bAsyncReads
+		? sphPreadCoro ( m_iFD, m_pBuff, iReadLen, iNewPos )
+		: sphPread ( m_iFD, m_pBuff, iReadLen, iNewPos ); // FIXME! what about throttling?
 
 	if ( m_iBuffUsed<0 )
 	{

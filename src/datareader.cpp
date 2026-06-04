@@ -183,7 +183,11 @@ protected:
 	explicit DirectFileReader_c ( BYTE * pBuf, int iSize, const char * szFileName )
 		: FileBlockReader_c ( szFileName )
 		, FileReader_c ( pBuf, iSize )
-	{}
+	{
+		// FILE-mode doclist/hitlist readers are created per query and not shared
+		// across fibers, so they may safely yield via io_uring.
+		SetAsyncReads ( true );
+	}
 
 	~DirectFileReader_c() final {}
 };

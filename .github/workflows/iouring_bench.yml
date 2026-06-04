@@ -11,6 +11,9 @@ on:
     paths:
       - '.github/workflows/iouring_bench.yml'
       - 'misc/iouring_bench/**'
+      - 'src/**'
+      - 'cmake/**'
+      - 'CMakeLists.txt'
 
 jobs:
   build:

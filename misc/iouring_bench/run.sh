@@ -66,7 +66,9 @@ wait_ready() {
 }
 
 start_searchd() { "$SEARCHD" -c "$CONF" >/dev/null 2>&1; wait_ready || { echo "searchd not ready"; tail -50 "$WORK/searchd.log"; exit 1; }; }
-stop_searchd() { "$SEARCHD" -c "$CONF" --stopwait >/dev/null 2>&1 || true; sleep 1; }
+# Never block forever on shutdown (a crashed/stuck daemon would otherwise hang CI):
+# bounded --stopwait, then force-kill as a fallback.
+stop_searchd() { timeout 30 "$SEARCHD" -c "$CONF" --stopwait >/dev/null 2>&1 || true; pkill -9 -f "$SEARCHD" >/dev/null 2>&1 || true; sleep 1; }
 
 run_one() { # $1=io_uring $2=cache(cold|warm) -> echoes json
   local iou="$1" cache="$2"

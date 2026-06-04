@@ -123,10 +123,17 @@ public:
 	inline static std::array<std::atomic<uint64_t>, 10>& GetStat64() { return m_dZip64Stats; }
 #endif
 
+	/// allow this reader to fill its buffer via io_uring (yields the fiber).
+	/// Only safe for readers that are NOT shared/pooled across concurrent fibers
+	/// (e.g. per-query doclist/hitlist readers); shared readers (docstore) must
+	/// stay synchronous to avoid concurrent use of the buffer.
+	void		SetAsyncReads ( bool bAsync ) { m_bAsyncReads = bAsync; }
+
 protected:
 	int			m_iFD = -1;
 	CSphString m_sFilename;
 	int			m_iBuffUsed = 0;	///< how many bytes in buffer are valid
+	bool		m_bAsyncReads = false; ///< route UpdateCache reads through io_uring
 
 	SphOffset_t	m_iPos = 0;			///< position in the file from witch m_pBuff starts
 	BYTE *		m_pBuff;            ///< the buffer
