@@ -1,0 +1,31 @@
+name: 📦 io_uring package (deb)
+
+# Build a full release .deb (jammy/x86_64, bundled deps) with io_uring enabled,
+# installable on Ubuntu 22.04+ (incl. 24.04 noble). Download the artifact and
+# `sudo apt install ./manticore*.deb` on the server.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ feat/io-uring-disk-io ]
+    paths:
+      - '.github/workflows/iouring_pack.yml'
+
+jobs:
+  pack:
+    uses: ./.github/workflows/build_template.yml
+    with:
+      DISTR: jammy
+      arch: x86_64
+      CTEST_CONFIGURATION_TYPE: RelWithDebInfo
+      cache_key: pack_iouring_jammy_x86_64
+      artifact_name: iouring_deb
+      artifact_list: "build/manticore*deb"
+      version: "0.0.1-iouring"
+      cmake_command: |
+        mkdir build && cd build
+        export BUNDLE_REPO_TYPE=dev
+        # DL_CURL: load libcurl at runtime (avoids static libcurl -> libssh link
+        # cascade in this sysroot). WITH_LIBURING is auto-enabled on Linux (vendored).
+        cmake -DPACK=1 -DPACK_BUNDLE=1 -DDL_CURL=1 ..
+        cmake --build . --target package
