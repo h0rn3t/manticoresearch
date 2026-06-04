@@ -100,6 +100,12 @@ done
 # also report what searchd logged for io_uring status
 STATUS="$(grep -o 'io_uring: [a-z ]*' "$WORK/searchd.log" | sort -u | tr '\n' ';')"
 
+# server-side diagnostics for the error investigation
+echo "===== searchd.log WARNING/ERROR lines =====" >&2
+grep -iE 'warning|error|fatal|assert|crash|backtrace' "$WORK/searchd.log" | tail -40 >&2 || true
+echo "===== query.log tail =====" >&2
+tail -5 "$WORK/query.log" 2>/dev/null >&2 || true
+
 emit() { # to stdout (and caller tees to summary)
   echo "### io_uring benchmark (ubuntu-24.04 runner, access=file doclists/hitlists)"
   echo ""
