@@ -19,45 +19,62 @@
 #include "iouring.h"
 #include "sphinxint.h"
 
+#include <memory>
+
 namespace
 {
+	// Read outcome lives on the heap (shared_ptr), NOT on the fiber stack. The
+	// completion fired by the reaper thread can wake (and thus resume) the fiber
+	// while the YieldWith handler is still executing; if the handler or completion
+	// touched fiber-stack variables they would read a popped stack -> crash. So
+	// everything the async callbacks need is captured by value / via this state.
+	struct ReadState_t
+	{
+		int		m_iResult = 0;		///< >=0 bytes, <0 is -errno (mirrors pread)
+		bool	m_bSubmitted = false; ///< false => caller must fall back to sphPread
+	};
+
 	int IoUringPreadCoro ( int iFD, void * pBuf, int iBytes, SphOffset_t iOffset )
 	{
 		// Outside a coroutine (service tasks, load) or backend down: read synchronously.
 		if ( !Threads::Coro::CurrentWorker() || !IoUring::IsIoUringAvailable() )
 			return sphPread ( iFD, pBuf, iBytes, iOffset );
 
+		auto pState = std::make_shared<ReadState_t>();
 		auto tWaker = Threads::CreateWaker(); // waker for the current fiber
-		int iResult = 0;
-		bool bSubmitted = false;
 
-		// Arm the read *inside* YieldWith, i.e. after the fiber has parked, so the
-		// completion (which may fire immediately on the reaper thread) cannot be lost.
-		Threads::Coro::YieldWith ( [&] () NO_THREAD_SAFETY_ANALYSIS
+		// Arm the read inside YieldWith (after the fiber parks). Capture everything
+		// BY VALUE: the handler must not reference the fiber stack, because the
+		// completion may resume the fiber before the handler returns.
+		Threads::Coro::YieldWith ( [pState, tWaker, iFD, pBuf, iBytes, iOffset] () NO_THREAD_SAFETY_ANALYSIS
 		{
-			bSubmitted = IoUring::SubmitRead ( iFD, pBuf, (unsigned)iBytes, iOffset,
-				[&iResult, tWaker] ( IoUring::ReadResult_t tRes )
+			bool bOk = IoUring::SubmitRead ( iFD, pBuf, (unsigned)iBytes, iOffset,
+				[pState, tWaker] ( IoUring::ReadResult_t tRes )
 				{
-					iResult = tRes.m_iRes; // >=0 bytes, <0 is -errno (mirrors pread)
+					pState->m_iResult = tRes.m_iRes;
+					pState->m_bSubmitted = true;
 					tWaker.Wake();
 				} );
 
 			// Ring full / backend down: nothing will wake us, so wake immediately
 			// and let the post-resume code fall back to a synchronous read.
-			if ( !bSubmitted )
+			if ( !bOk )
+			{
+				pState->m_bSubmitted = false;
 				tWaker.Wake();
+			}
 		} );
 
-		if ( !bSubmitted )
+		if ( !pState->m_bSubmitted )
 			return sphPread ( iFD, pBuf, iBytes, iOffset );
 
 		CSphIOStats * pIOStats = GetIOStats();
-		if ( pIOStats && iResult>0 )
+		if ( pIOStats && pState->m_iResult>0 )
 		{
 			pIOStats->m_iReadOps++;
 			pIOStats->m_iReadBytes += iBytes;
 		}
-		return iResult;
+		return pState->m_iResult;
 	}
 }
 
