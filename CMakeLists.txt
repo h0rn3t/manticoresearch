@@ -451,8 +451,24 @@ if (CMAKE_SYSTEM_NAME STREQUAL Darwin AND MANTICORE_PREFER_HOMEBREW_CURL)
 	unset ( _curl_should_prefer_homebrew )
 endif ()
 
+# In the CI cross sysroot the project searches static libs (.a) first, so
+# find_package(CURL) picks libcurl.a, which references libssh (SCP/SFTP) — not
+# linkable here. Once the io_uring object reorg makes those objects reachable the
+# searchd link fails on undefined ssh_*/sftp_* symbols. Put .so first just for the
+# CURL probe (as cmake/FindMysql.cmake does for libmysqlclient) so the shared
+# libcurl is found and dl_package_comp below auto-enables DL_CURL (dlopen at
+# runtime, like MySQL/ZSTD). That drops the static libssh edge while keeping curl
+# fully working — Buddy needs it (see IsCurlAvailable()), so disabling it is out.
+set ( _curl_saved_suffixes "${CMAKE_FIND_LIBRARY_SUFFIXES}" )
+if (DEFINED ENV{MANTICORE_PREFER_SHARED_DL_LIBS} AND NOT "$ENV{MANTICORE_PREFER_SHARED_DL_LIBS}" STREQUAL "0")
+	set ( CURL_USE_STATIC_LIBS OFF CACHE BOOL "" FORCE )
+	set ( CMAKE_FIND_LIBRARY_SUFFIXES .so .a )
+endif ()
+
 with_menu_libname ( CURL libcurl "libCURL" "for enhanced network communication" )
 dl_package_comp ( CURL libcurl "curl" )
+set ( CMAKE_FIND_LIBRARY_SUFFIXES "${_curl_saved_suffixes}" )
+unset ( _curl_saved_suffixes )
 win_install_lib ( CURL libcurl daemon )
 
 # Opt-out used by the io_uring benchmark build. The CI sysroot ships static
@@ -469,6 +485,16 @@ if (DEFINED ENV{MANTICORE_BENCH_MINIMAL} AND NOT "$ENV{MANTICORE_BENCH_MINIMAL}"
 	set ( WITH_ODBC 0 CACHE BOOL "" FORCE )
 	set ( WITH_CURL 0 CACHE BOOL "" FORCE )
 	set ( WITH_POSTGRESQL 0 CACHE BOOL "" FORCE )
+endif ()
+
+# Narrow opt-out for just ODBC. The CI sysroot ships static unixODBC (libodbc.a)
+# that references libltdl (lt_dlopen et al.) but no linkable libltdl, so once the
+# io_uring object reorg pulls source_odbc into the indexer link it fails with
+# undefined lt_dl* symbols. ODBC-labeled tests auto-skip when WITH_ODBC is off
+# (see test/CMakeLists.txt), so dropping it here is test-safe — unlike the broader
+# MANTICORE_BENCH_MINIMAL which also drops CURL/PostgreSQL (not test-gated).
+if (DEFINED ENV{MANTICORE_DISABLE_ODBC} AND NOT "$ENV{MANTICORE_DISABLE_ODBC}" STREQUAL "0")
+	set ( WITH_ODBC 0 CACHE BOOL "" FORCE )
 endif ()
 
 # ODBC and it's dynamic linking
@@ -519,9 +545,21 @@ endif ()
 
 win_install ( Mysql indexer )
 
-# PostgreSQL and it's dynamic linking
+# PostgreSQL and it's dynamic linking. Same static-vs-shared problem as CURL: the
+# project searches .a first, so find_package(PostgreSQL) picks libpq.a, which pulls
+# GSSAPI (gss_*) and pg_snprintf that aren't linkable in this sysroot. In the PACK
+# (release) build WITH_POSTGRESQL is on, so the indexer link fails. Put .so first
+# for the probe so dl_package auto-enables DL_POSTGRESQL (dlopen libpq at runtime,
+# like MySQL) — keeps the PG source connector working without the static libpq edge.
+set ( _pgsql_saved_suffixes "${CMAKE_FIND_LIBRARY_SUFFIXES}" )
+if (DEFINED ENV{MANTICORE_PREFER_SHARED_DL_LIBS} AND NOT "$ENV{MANTICORE_PREFER_SHARED_DL_LIBS}" STREQUAL "0")
+	set ( CMAKE_FIND_LIBRARY_SUFFIXES .so .a )
+endif ()
+
 with_menu ( PostgreSQL "pgsql" "for indexing postgresql sources with indexer" )
 dl_package ( PostgreSQL "pgsql" )
+set ( CMAKE_FIND_LIBRARY_SUFFIXES "${_pgsql_saved_suffixes}" )
+unset ( _pgsql_saved_suffixes )
 win_install ( PostgreSQL indexer )
 
 # Storing compiler version
