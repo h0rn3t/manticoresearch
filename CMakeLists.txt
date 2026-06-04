@@ -471,6 +471,16 @@ if (DEFINED ENV{MANTICORE_BENCH_MINIMAL} AND NOT "$ENV{MANTICORE_BENCH_MINIMAL}"
 	set ( WITH_POSTGRESQL 0 CACHE BOOL "" FORCE )
 endif ()
 
+# Narrow opt-out for just ODBC. The CI sysroot ships static unixODBC (libodbc.a)
+# that references libltdl (lt_dlopen et al.) but no linkable libltdl, so once the
+# io_uring object reorg pulls source_odbc into the indexer link it fails with
+# undefined lt_dl* symbols. ODBC-labeled tests auto-skip when WITH_ODBC is off
+# (see test/CMakeLists.txt), so dropping it here is test-safe — unlike the broader
+# MANTICORE_BENCH_MINIMAL which also drops CURL/PostgreSQL (not test-gated).
+if (DEFINED ENV{MANTICORE_DISABLE_ODBC} AND NOT "$ENV{MANTICORE_DISABLE_ODBC}" STREQUAL "0")
+	set ( WITH_ODBC 0 CACHE BOOL "" FORCE )
+endif ()
+
 # ODBC and it's dynamic linking
 with_menu ( ODBC "ODBC/UnixODBC/iODBC" "for indexing MSSQL (windows) and generic ODBC sources with indexer" )
 dl_package ( ODBC "ODBC/UnixODBC/iODBC" )

@@ -313,6 +313,7 @@ jobs:
       cache_key: build_linux_debug_x86_64
       cmake_command: |
         export CMAKE_TOOLCHAIN_FILE=$(pwd)/dist/build_dockers/cross/linux.cmake
+        export MANTICORE_DISABLE_ODBC=1
         ctest -VV -S misc/ctest/gltest.cmake --no-compress-output
 
   test_linux_debug:
@@ -339,6 +340,7 @@ jobs:
       artifact_list: "build/xml build/CMakeFiles/CMake*.log build/api/libsphinxclient/testcli build/src/indexer build/src/indextool build/src/searchd build/src/tests build/src/gtests/gmanticoretest build/config/*.c build/config/*.h build/**/*.cxx build/**/*.gcno build/manticore*deb"
       cmake_command: |
         export CMAKE_TOOLCHAIN_FILE=$(pwd)/dist/build_dockers/cross/linux.cmake
+        export MANTICORE_DISABLE_ODBC=1
         export PACK=1
         export PACK_KEEP_TESTS=1
         ctest -VV -S misc/ctest/gltest.cmake --no-compress-output
