@@ -305,7 +305,11 @@ void CSphReader::UpdateCache()
 	int iReadLen = Min ( m_iSizeHint, m_iBufSize );
 
 	m_iBuffPos = 0;
-	m_iBuffUsed = sphPread ( m_iFD, m_pBuff, iReadLen, iNewPos ); // FIXME! what about throttling?
+	// io_uring async read only for readers explicitly marked async-safe (per-query
+	// doclist/hitlist readers); shared readers (docstore) stay synchronous.
+	m_iBuffUsed = m_bAsyncReads
+		? sphPreadCoro ( m_iFD, m_pBuff, iReadLen, iNewPos )
+		: sphPread ( m_iFD, m_pBuff, iReadLen, iNewPos ); // FIXME! what about throttling?
 
 	if ( m_iBuffUsed<0 )
 	{
@@ -1116,3 +1120,22 @@ int sphPread ( int iFD, void * pBuf, int iBytes, SphOffset_t iOffset )
 
 #endif // HAVE_PREAD
 #endif // _WIN32
+
+
+// Optional async-read hook, installed by the searchd-only io_uring glue
+// (iouring_coro.cpp). Kept as an indirection so this broadly-linked TU does not
+// pull the coroutine / liburing graph into tools like indexer; when unset
+// (indexer, non-coroutine contexts, io_uring off) reads stay synchronous.
+static PreadCoroHook_fn g_pPreadCoroHook = nullptr;
+
+void SetPreadCoroHook ( PreadCoroHook_fn fnHook )
+{
+	g_pPreadCoroHook = fnHook;
+}
+
+int sphPreadCoro ( int iFD, void * pBuf, int iBytes, SphOffset_t iOffset )
+{
+	if ( g_pPreadCoroHook )
+		return g_pPreadCoroHook ( iFD, pBuf, iBytes, iOffset );
+	return sphPread ( iFD, pBuf, iBytes, iOffset );
+}

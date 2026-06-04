@@ -1,0 +1,33 @@
+name: 🏗️ io_uring build
+
+# Phase 2a: prove the full searchd cross-build is green on this fork for our branch.
+# At this point iouring.cpp compiles in stub mode (WITH_LIBURING off). Once the build
+# infra is confirmed, we vendor liburing and turn the feature on.
+
+on:
+  push:
+    branches: [ feat/io-uring-disk-io ]
+    paths:
+      - 'src/**'
+      - 'cmake/**'
+      - 'CMakeLists.txt'
+      - '.github/workflows/iouring_build.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    uses: ./.github/workflows/build_template.yml
+    with:
+      CTEST_CONFIGURATION_TYPE: "Debug"
+      # Disable unity build: adding/moving the io_uring TUs reshuffles unity chunks,
+      # which makes the linker pull previously-dead members of librepli_stuff (libssh)
+      # and libodbc (libltdl) that are not linkable in the CI sysroot. A non-unity
+      # build keeps the link graph equivalent to a clean build.
+      UNITY_BUILD: 0
+      artifact_name: iouring_searchd_debug
+      cache_key: build_linux_iouring_debug_x86_64_nounity
+      artifact_list: "build/xml build/src/searchd build/src/indexer build/src/indextool build/CMakeFiles/CMake*.log"
+      cmake_command: |
+        export CMAKE_TOOLCHAIN_FILE=$(pwd)/dist/build_dockers/cross/linux.cmake
+        export MANTICORE_BENCH_MINIMAL=1
+        ctest -VV -S misc/ctest/gltest.cmake --no-compress-output

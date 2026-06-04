@@ -1,0 +1,75 @@
+name: 📈 io_uring benchmark
+
+# Phase 2c: build searchd+indexer with io_uring, then on a native x86_64 runner
+# build a plain disk index (access=file doclists/hitlists) and measure query
+# throughput with io_uring on vs off, cold vs warm cache.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ feat/io-uring-disk-io ]
+    paths:
+      - '.github/workflows/iouring_bench.yml'
+      - 'misc/iouring_bench/**'
+      - 'src/**'
+      - 'cmake/**'
+      - 'CMakeLists.txt'
+
+jobs:
+  build:
+    uses: ./.github/workflows/build_template.yml
+    with:
+      CTEST_CONFIGURATION_TYPE: "RelWithDebInfo"
+      UNITY_BUILD: 0
+      artifact_name: iouring_bench_build
+      cache_key: build_linux_iouring_bench_x86_64
+      artifact_list: "build/src/searchd build/src/indexer build/src/indextool"
+      cmake_command: |
+        export CMAKE_TOOLCHAIN_FILE=$(pwd)/dist/build_dockers/cross/linux.cmake
+        export MANTICORE_BENCH_MINIMAL=1
+        ctest -VV -S misc/ctest/gltest.cmake --no-compress-output
+
+  bench:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download build
+        uses: actions/download-artifact@v4
+        with:
+          name: iouring_bench_build
+          path: artifact_bin
+
+      - name: Prepare binaries
+        run: |
+          # upload_artifact_with_retries wraps files in artifact.tar inside the zip.
+          if [ -f artifact_bin/artifact.tar ]; then tar xf artifact_bin/artifact.tar -C artifact_bin; fi
+          echo "== artifact tree =="; find artifact_bin -type f | head -50
+          SEARCHD=$(find artifact_bin -type f -name searchd | head -1)
+          INDEXER=$(find artifact_bin -type f -name indexer | head -1)
+          echo "searchd=$SEARCHD indexer=$INDEXER"
+          test -n "$SEARCHD" && test -n "$INDEXER" || { echo "binaries not found"; exit 1; }
+          chmod +x "$SEARCHD" "$INDEXER"
+          echo "SEARCHD=$SEARCHD" >> "$GITHUB_ENV"
+          echo "INDEXER=$INDEXER" >> "$GITHUB_ENV"
+          echo "== ldd searchd ==" ; ldd "$SEARCHD" || true
+          uname -r
+
+      - name: Run benchmark
+        env:
+          NDOCS: "1500000"
+          CONC: "16"
+          DUR: "15"
+        run: |
+          bash misc/iouring_bench/run.sh | tee bench_result.md
+          cat bench_result.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload searchd log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: iouring_bench_logs
+          path: /tmp/iou/*.log
+          if-no-files-found: ignore

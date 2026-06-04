@@ -39,6 +39,13 @@ if (WITH_ODBC)
 		target_link_libraries ( source_odbc PRIVATE ODBC::ODBC_ld )
 	else ()
 		target_link_libraries ( source_odbc PRIVATE ODBC::ODBC )
+		# Static unixODBC (libodbc.a) references libltdl (lt_dlopen et al.) to load
+		# drivers, but the imported ODBC target does not carry it. It happened to
+		# resolve by static link order before; link it explicitly so it is robust.
+		find_library ( LTDL_LIBRARY NAMES ltdl )
+		if (LTDL_LIBRARY)
+			target_link_libraries ( source_odbc PRIVATE ${LTDL_LIBRARY} )
+		endif ()
 	endif ()
 
 	target_link_libraries ( indexer_sources INTERFACE source_odbc )

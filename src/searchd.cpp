@@ -13,6 +13,7 @@
 #include "sphinxplugin.h"
 #include "sphinxqcache.h"
 #include "docstore.h"
+#include "iouring.h"
 #include "searchdha.h"
 #include "searchdreplication.h"
 #include "replication/api_command_cluster.h"
@@ -103,6 +104,9 @@ int						g_iQueryLogMinMs	= 0;				// log 'slow' threshold for query
 int						g_iReadTimeoutS		= 5;	// sec
 int						g_iWriteTimeoutS	= 5;	// sec
 bool					g_bTimeoutEachPacket = true;
+bool					g_bIoUring			= true;	// async disk reads via io_uring (Linux); auto-disabled if unavailable
+bool					g_bIoUringSQPoll	= false;	// kernel-side SQ polling (busy poll thread; best on multi-core)
+void InstallIoUringReadHook();	// defined in iouring_coro.cpp (lsearchd); wires io_uring into fileio reads
 int						g_iClientTimeoutS	= 300;
 int						g_iClientQlTimeoutS	= 900;	// sec, ql interactive clients
 int						g_iClientQlWaitTimeoutS	= 28800;	// sec, ql non-interactive clients
@@ -437,6 +441,7 @@ void Shutdown () REQUIRES ( MainThread ) NO_THREAD_SAFETY_ANALYSIS
 
 	SHUTINFO << "Shutdown main work pool ...";
 	StopGlobalWorkPool();
+	IoUring::StopIoUring();
 	sd::extend30s();
 
 	SHUTINFO << "Remove local tables list ...";
@@ -14415,6 +14420,8 @@ void ConfigureSearchd ( const CSphConfig & hConf, bool bNeedPIDFile, bool bTestM
 	g_iReadTimeoutS = hSearchd.GetSTimeS ( "network_timeout", g_iReadTimeoutS );
 	g_iWriteTimeoutS = g_iReadTimeoutS;
 	g_bTimeoutEachPacket = hSearchd.GetBool( "reset_network_timeout_on_packet" );
+	g_bIoUring = hSearchd.GetBool ( "io_uring", true );
+	g_bIoUringSQPoll = hSearchd.GetBool ( "io_uring_sqpoll", false );
 
 	g_iClientQlTimeoutS = hSearchd.GetSTimeS( "sphinxql_timeout", 900);
 	g_iClientTimeoutS = hSearchd.GetSTimeS ( "client_timeout", 300 );
@@ -15658,6 +15665,18 @@ int WINAPI ServiceMain ( int argc, char **argv ) EXCLUDES (MainThread)
 		hConf("common") ? hConf["common"]("common") : nullptr );
 	// after next line executed we're in mt env, need to take rwlock accessing config.
 	StartGlobalWorkPool ();
+
+	// Start the io_uring backend after the daemonizing fork (threads do not survive fork).
+	if ( g_bIoUring )
+	{
+		if ( IoUring::StartIoUring ( 1024, g_bIoUringSQPoll ) )
+		{
+			InstallIoUringReadHook();
+			sphInfo ( "io_uring: enabled (async disk reads%s)", IoUring::IoUringUsesSQPoll() ? ", SQPOLL" : "" );
+		} else
+			sphInfo ( "io_uring: requested but unavailable (kernel/seccomp); using blocking reads" );
+	} else
+		sphInfo ( "io_uring: disabled by config" );
 
 	// since that moment any 'fatal' will assume calling 'shutdown' function.
 	sphSetDieCallback ( DieOrFatalWithShutdownCb );

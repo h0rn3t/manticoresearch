@@ -214,7 +214,7 @@ add_library ( lsearchd OBJECT searchdha.cpp http/http_parser.c searchdhttp.cpp
 		sphinxql_debug.cpp sphinxql_second.cpp stackmock.cpp docs_collector.cpp index_rotator.cpp config_reloader.cpp netpoll.cpp
 		pollable_event.cpp netfetch.cpp searchdbuddy.cpp searchdhttpcompat.cpp sphinxql_extra.cpp searchdreplication.cpp sphinxjsonquery.cpp
 		frontendschema.cpp compressed_http.cpp debug_cmds.cpp jsonqueryfilter.cpp dynamic_idx.cpp sphinxexcerpt.cpp searchdexpr.cpp querystats.cpp
-		facetutils.cpp
+		facetutils.cpp iouring.cpp iouring_coro.cpp
 		)
 target_sources ( lsearchd PUBLIC ${SEARCHD_SRCS_TESTABLE} ${SEARCHD_H} ${SEARCHD_BISON} ${SEARCHD_FLEX} )
 add_library ( digest_sha1 digest_sha1.cpp )
@@ -249,6 +249,13 @@ if (WITH_CURL)
 	else ()
 		target_link_libraries ( lsearchd PRIVATE CURL::libcurl )
 	endif ()
+endif ()
+
+# io_uring async disk reads (Linux-only). HAVE_IO_URING gates the io_uring code path;
+# without it the daemon falls back to blocking sphPread.
+if (WITH_LIBURING)
+	target_link_libraries ( lsearchd PRIVATE liburing::liburing )
+	target_compile_definitions ( lsearchd PRIVATE HAVE_IO_URING=1 )
 endif ()
 
 add_subdirectory ( perfetto )

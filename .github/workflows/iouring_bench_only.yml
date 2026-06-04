@@ -1,0 +1,64 @@
+name: 📈 io_uring benchmark (reuse build)
+
+# Fast bench iteration: reuse a prebuilt iouring_bench_build artifact from a prior
+# successful build run instead of rebuilding searchd every time.
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_run_id:
+        description: "run id that produced the iouring_bench_build artifact"
+        required: false
+        default: "26923802148"
+  push:
+    branches: [ feat/io-uring-disk-io ]
+    paths:
+      - 'misc/iouring_bench/**'
+      - '.github/workflows/iouring_bench_only.yml'
+
+jobs:
+  bench:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download prebuilt binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: iouring_bench_build
+          path: artifact_bin
+          run-id: ${{ github.event.inputs.build_run_id || '26923802148' }}
+          github-token: ${{ github.token }}
+
+      - name: Prepare binaries
+        run: |
+          # upload_artifact_with_retries wraps files in artifact.tar inside the zip.
+          if [ -f artifact_bin/artifact.tar ]; then tar xf artifact_bin/artifact.tar -C artifact_bin; fi
+          echo "== artifact tree =="; find artifact_bin -type f | head -50
+          SEARCHD=$(find artifact_bin -type f -name searchd | head -1)
+          INDEXER=$(find artifact_bin -type f -name indexer | head -1)
+          echo "searchd=$SEARCHD indexer=$INDEXER"
+          test -n "$SEARCHD" && test -n "$INDEXER" || { echo "binaries not found"; exit 1; }
+          chmod +x "$SEARCHD" "$INDEXER"
+          echo "SEARCHD=$SEARCHD" >> "$GITHUB_ENV"
+          echo "INDEXER=$INDEXER" >> "$GITHUB_ENV"
+          echo "== ldd =="; ldd "$SEARCHD" || true
+          uname -r
+
+      - name: Run benchmark
+        env:
+          NDOCS: "1500000"
+          CONC: "16"
+          DUR: "15"
+        run: |
+          bash misc/iouring_bench/run.sh | tee bench_result.md
+          cat bench_result.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: iouring_bench_logs
+          path: /tmp/iou/*.log
+          if-no-files-found: ignore

@@ -415,6 +415,22 @@ with_menu ( ZSTD "libzstd" "for compressed networking" )
 dl_package ( ZSTD "zstd" )
 win_install ( ZSTD daemon )
 
+# Support for io_uring async disk reads (Linux-only). Auto-detected; off elsewhere.
+# Prefer system liburing (native builds); fall back to a vendored build (cross toolchain
+# sysroot has no liburing). Either way produces the liburing::liburing target.
+if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+	if (NOT DEFINED WITH_LIBURING OR WITH_LIBURING)
+		find_package ( liburing QUIET )
+		if (NOT liburing_FOUND)
+			include ( Getliburing )
+		endif ()
+		if (liburing_FOUND OR TARGET liburing::liburing)
+			set ( WITH_LIBURING ON CACHE BOOL "link with liburing for async io_uring disk reads" )
+		endif ()
+	endif ()
+	add_feature_info ( liburing WITH_LIBURING "for async io_uring disk reads (Linux)" )
+endif ()
+
 set ( MANTICORE_PREFER_HOMEBREW_CURL ON CACHE BOOL "Prefer Homebrew curl over Apple SDK curl on macOS" )
 if (CMAKE_SYSTEM_NAME STREQUAL Darwin AND MANTICORE_PREFER_HOMEBREW_CURL)
 	set ( _curl_should_prefer_homebrew TRUE )
@@ -438,6 +454,22 @@ endif ()
 with_menu_libname ( CURL libcurl "libCURL" "for enhanced network communication" )
 dl_package_comp ( CURL libcurl "curl" )
 win_install_lib ( CURL libcurl daemon )
+
+# Opt-out used by the io_uring benchmark build. The CI sysroot ships static
+# third-party libs whose transitive deps are not linkable there (unixODBC -> libltdl,
+# static libcurl -> libssh SCP/SFTP). These were dead code before; reorganizing the
+# objects for io_uring changes link reachability and pulls them in, breaking the link.
+# None of ODBC / CURL matter for benchmarking disk reads, so allow disabling them
+# without touching the shared ctest driver.
+if (DEFINED ENV{MANTICORE_BENCH_MINIMAL} AND NOT "$ENV{MANTICORE_BENCH_MINIMAL}" STREQUAL "0")
+	# Lean build: drop the indexer source connectors / curl whose bundled static
+	# libs carry transitive deps (libltdl, libssh, gssapi, libpq) that aren't fully
+	# linked in this sysroot and break once io_uring shifts the static link order.
+	# Full-text search with io_uring is unaffected.
+	set ( WITH_ODBC 0 CACHE BOOL "" FORCE )
+	set ( WITH_CURL 0 CACHE BOOL "" FORCE )
+	set ( WITH_POSTGRESQL 0 CACHE BOOL "" FORCE )
+endif ()
 
 # ODBC and it's dynamic linking
 with_menu ( ODBC "ODBC/UnixODBC/iODBC" "for indexing MSSQL (windows) and generic ODBC sources with indexer" )
