@@ -13,7 +13,7 @@ on:
       tag:
         description: "release tag"
         required: false
-        default: "v0.0.1-io_uring"
+        default: "v0.0.2"
   push:
     branches: [ feat/io-uring-disk-io ]
     paths:
@@ -45,15 +45,20 @@ jobs:
       - name: Create release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.event.inputs.tag || 'v0.0.1-io_uring' }}
+          TAG: ${{ github.event.inputs.tag || 'v0.0.2' }}
         run: |
           cd deb
           gh release delete "$TAG" --repo "${{ github.repository }}" --yes --cleanup-tag 2>/dev/null || true
           gh release create "$TAG" build/*.deb \
             --repo "${{ github.repository }}" \
             --target "${{ github.sha }}" \
-            --title "Manticore + io_uring (Ubuntu 22.04/24.04, amd64)" \
-            --notes "Lean build of branch \`feat/io-uring-disk-io\` with io_uring async disk reads for FILE-mode doclists/hitlists.
+            --title "Manticore $TAG — io_uring + amd64 SIMD (Ubuntu 22.04/24.04, amd64)" \
+            --notes "Bundled release built from \`main\`. Lean amd64-only build with two performance features on top of upstream Manticore:
+
+          - **io_uring async disk reads** for FILE-mode doclists/hitlists (set \`io_uring = 1\`; falls back to pread when unavailable).
+          - **amd64 SIMD baseline** — CRoaring AVX2/AVX-512 (runtime-dispatched) for filtering/faceting/intersections, and \`-march=x86-64-v3\` (AVX2/BMI2/FMA/POPCNT) for the daemon. FMA contraction is disabled so scores stay bit-identical to upstream.
+
+          **CPU requirement:** x86-64-v3 (Haswell 2013+ / Zen 1+). The binary will SIGILL on older CPUs.
 
           **Install (Ubuntu 22.04/24.04, amd64):**
           \`\`\`bash
@@ -63,4 +68,4 @@ jobs:
           \`\`\`
           Then set \`io_uring = 1\` in the \`searchd { }\` section of /etc/manticoresearch/manticore.conf and \`sudo systemctl enable --now manticore\`. See misc/iouring_bench/DEPLOY.md.
 
-          Note: lean package — ODBC/CURL/PostgreSQL source connectors disabled; liburing statically vendored; falls back to pread if io_uring is unavailable."
+          Note: lean package — ODBC/CURL/PostgreSQL source connectors disabled; liburing statically vendored."
