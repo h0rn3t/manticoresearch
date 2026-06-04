@@ -21,7 +21,7 @@ jobs:
       cache_key: pack_iouring_jammy_x86_64
       artifact_name: iouring_deb
       artifact_list: "build/manticore*deb"
-      version: "0.0.1-iouring"
+      version: "0.0.2"
       cmake_command: |
         mkdir build && cd build
         export BUNDLE_REPO_TYPE=dev
