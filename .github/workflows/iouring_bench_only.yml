@@ -33,6 +33,8 @@ jobs:
 
       - name: Prepare binaries
         run: |
+          # upload_artifact_with_retries wraps files in artifact.tar inside the zip.
+          if [ -f artifact_bin/artifact.tar ]; then tar xf artifact_bin/artifact.tar -C artifact_bin; fi
           echo "== artifact tree =="; find artifact_bin -type f | head -50
           SEARCHD=$(find artifact_bin -type f -name searchd | head -1)
           INDEXER=$(find artifact_bin -type f -name indexer | head -1)
