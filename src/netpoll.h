@@ -138,15 +138,12 @@ public:
 #define NETPOLL_KQUEUE 2
 #define NETPOLL_POLL 3
 
-#if HAVE_EPOLL
+// Linux-only target: epoll is the single supported network poller. The kqueue and
+// poll netpoll backends were dropped here (change add-io-uring-disk-io, task 5.1),
+// so POLLING_KQUEUE / POLLING_POLL are never defined and their branches compile out.
+// HAVE_EPOLL is provided by the build on Linux; anything else is unsupported.
+#if !HAVE_EPOLL
+#error "Manticore (this fork) is Linux-only: epoll (HAVE_EPOLL) is required."
+#endif
 #define POLLING_EPOLL 1
 #define NETPOLL_TYPE NETPOLL_EPOLL
-#elif HAVE_KQUEUE
-#define POLLING_KQUEUE 1
-#define NETPOLL_TYPE NETPOLL_KQUEUE
-#elif HAVE_POLL
-#define POLLING_POLL 1
-#define NETPOLL_TYPE NETPOLL_POLL
-#endif
-
-// #define NETPOLL_TYPE NETPOLL_POLL

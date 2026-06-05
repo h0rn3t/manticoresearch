@@ -222,6 +222,15 @@ else()
 endif()
 endif()
 
+# Linux-only target (change add-io-uring-disk-io, task 5.3). The async disk-read path
+# uses io_uring and the network poller was reduced to epoll only (kqueue/poll backends
+# dropped), so the build no longer supports non-Linux platforms. epoll itself is still
+# probed below so HAVE_EPOLL stays accurate for netpoll.h's compile-time guard.
+if (NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+	message ( FATAL_ERROR "This fork is Linux-only (io_uring + epoll). "
+		"Detected system: '${CMAKE_SYSTEM_NAME}'. Build on Linux." )
+endif()
+
 # Checking for specific headers
 include ( CheckIncludeFile )
 

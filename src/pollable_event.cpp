@@ -22,76 +22,6 @@
 #if !HAVE_EVENTFD
 static bool CreateSocketPair ( int &iSock1, int &iSock2, CSphString &sError )
 {
-#if _WIN32
-	union {
-		struct sockaddr_in inaddr;
-		struct sockaddr addr;
-	} tAddr;
-
-	int iListen = (int)socket ( AF_INET, SOCK_STREAM, IPPROTO_TCP );
-	if ( iListen<0 )
-	{
-		sError.SetSprintf ( "failed to create listen socket: %s", sphSockError() );
-		return false;
-	}
-
-	memset ( &tAddr, 0, sizeof ( tAddr ) );
-	tAddr.inaddr.sin_family = AF_INET;
-	tAddr.inaddr.sin_addr.s_addr = htonl ( INADDR_LOOPBACK );
-	tAddr.inaddr.sin_port = 0;
-	auto tCloseListen = AtScopeExit  ( [&iListen] { if ( iListen>=0 ) sphSockClose (iListen); } );
-
-	if ( bind ( iListen, &tAddr.addr, sizeof ( tAddr.inaddr ) )<0 )
-	{
-		sError.SetSprintf ( "failed to bind listen socket: %s", sphSockError() );
-		return false;
-	}
-
-	int iAddrBufLen = sizeof ( tAddr );
-	memset ( &tAddr, 0, sizeof ( tAddr ) );
-	if ( getsockname ( iListen, &tAddr.addr, &iAddrBufLen )<0 )
-	{
-		sError.SetSprintf ( "failed to get socket description: %s", sphSockError() );
-		return false;
-	}
-
-	tAddr.inaddr.sin_addr.s_addr = htonl ( INADDR_LOOPBACK );
-	tAddr.inaddr.sin_family = AF_INET;
-
-	if ( listen ( iListen, 5 )<0 )
-	{
-		sError.SetSprintf ( "failed to listen socket: %s", sphSockError() );
-		return false;
-	}
-
-	int iWrite = (int)socket ( AF_INET, SOCK_STREAM, 0 );
-	auto tCloseWrite = AtScopeExit  ( [&iWrite] { if ( iWrite>=0 ) sphSockClose (iWrite); } );
-
-	if ( iWrite<0 )
-	{
-		sError.SetSprintf ( "failed to create write socket: %s", sphSockError() );
-		return false;
-	}
-
-	if ( connect ( iWrite, &tAddr.addr, sizeof(tAddr.addr) )<0 )
-	{
-		sError.SetSprintf ( "failed to connect to loopback: %s\n", sphSockError() );
-		return false;
-	}
-
-	int iRead = (int)accept ( iListen, NULL, NULL );
-	if ( iRead<0 )
-	{
-		sError.SetSprintf ( "failed to accept loopback: %s\n", sphSockError() );
-	}
-
-	iSock1 = iRead;
-	iSock2 = iWrite;
-	iWrite = -1; // protect from tCloseWrite
-
-	sphSetSockNodelay ( iSock2 );
-
-#else
 	int dSockets[2] = { -1, -1 };
 	if ( socketpair ( AF_LOCAL, SOCK_STREAM, 0, dSockets )!=0 )
 	{
@@ -102,7 +32,6 @@ static bool CreateSocketPair ( int &iSock1, int &iSock2, CSphString &sError )
 	iSock1 = dSockets[0];
 	iSock2 = dSockets[1];
 
-#endif
 
 	if ( sphSetSockNB ( iSock1 )<0 || sphSetSockNB ( iSock2 )<0 )
 	{

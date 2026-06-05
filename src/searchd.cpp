@@ -106,6 +106,7 @@ int						g_iWriteTimeoutS	= 5;	// sec
 bool					g_bTimeoutEachPacket = true;
 bool					g_bIoUring			= true;	// async disk reads via io_uring (Linux); auto-disabled if unavailable
 bool					g_bIoUringSQPoll	= false;	// kernel-side SQ polling (busy poll thread; best on multi-core)
+int						g_iIoUringMaxInflight = 0;	// cap on concurrent async reads (0 = ring depth); async read throttle
 void InstallIoUringReadHook();	// defined in iouring_coro.cpp (lsearchd); wires io_uring into fileio reads
 int						g_iClientTimeoutS	= 300;
 int						g_iClientQlTimeoutS	= 900;	// sec, ql interactive clients
@@ -14422,6 +14423,7 @@ void ConfigureSearchd ( const CSphConfig & hConf, bool bNeedPIDFile, bool bTestM
 	g_bTimeoutEachPacket = hSearchd.GetBool( "reset_network_timeout_on_packet" );
 	g_bIoUring = hSearchd.GetBool ( "io_uring", true );
 	g_bIoUringSQPoll = hSearchd.GetBool ( "io_uring_sqpoll", false );
+	g_iIoUringMaxInflight = hSearchd.GetInt ( "io_uring_max_inflight", 0 );
 
 	g_iClientQlTimeoutS = hSearchd.GetSTimeS( "sphinxql_timeout", 900);
 	g_iClientTimeoutS = hSearchd.GetSTimeS ( "client_timeout", 300 );
@@ -15669,10 +15671,10 @@ int WINAPI ServiceMain ( int argc, char **argv ) EXCLUDES (MainThread)
 	// Start the io_uring backend after the daemonizing fork (threads do not survive fork).
 	if ( g_bIoUring )
 	{
-		if ( IoUring::StartIoUring ( 1024, g_bIoUringSQPoll ) )
+		if ( IoUring::StartIoUring ( 1024, g_bIoUringSQPoll, (unsigned)Max ( g_iIoUringMaxInflight, 0 ) ) )
 		{
 			InstallIoUringReadHook();
-			sphInfo ( "io_uring: enabled (async disk reads%s)", IoUring::IoUringUsesSQPoll() ? ", SQPOLL" : "" );
+			sphInfo ( "io_uring: enabled (async disk reads%s; max inflight %u)", IoUring::IoUringUsesSQPoll() ? ", SQPOLL" : "", IoUring::IoUringInflightCap() );
 		} else
 			sphInfo ( "io_uring: requested but unavailable (kernel/seccomp); using blocking reads" );
 	} else

@@ -38,6 +38,8 @@ namespace
 		std::mutex		m_tSubmitMutex;			// SQ is single-producer: serialize submitters
 		std::thread		m_tReaper;
 		std::atomic<bool> m_bRunning { false };
+		std::atomic<int> m_iInflight { 0 };		// reads submitted but not yet reaped (the throttle counter)
+		unsigned		m_uMaxInflight = 0;		// cap on m_iInflight; set once at start, treated const while running
 		bool			m_bRingInit = false;
 		bool			m_bSQPoll = false;
 	};
@@ -79,6 +81,8 @@ namespace
 					if ( pComp->m_fnDone )
 						pComp->m_fnDone ( ReadResult_t { iRes } );
 					delete pComp;
+					// Release the inflight slot reserved by SubmitRead.
+					g_tState.m_iInflight.fetch_sub ( 1, std::memory_order_acq_rel );
 				}
 			}
 			io_uring_cq_advance ( &g_tState.m_tRing, uCount );
@@ -106,7 +110,7 @@ bool IsIoUringAvailable()
 	return bAvailable;
 }
 
-bool StartIoUring ( unsigned uQueueDepth, bool bSQPoll )
+bool StartIoUring ( unsigned uQueueDepth, bool bSQPoll, unsigned uMaxInflight )
 {
 	if ( g_tState.m_bRunning.load ( std::memory_order_acquire ) )
 		return true;
@@ -135,6 +139,9 @@ bool StartIoUring ( unsigned uQueueDepth, bool bSQPoll )
 		return false;
 
 	g_tState.m_bRingInit = true;
+	// 0 -> the ring depth is the natural inflight ceiling; otherwise honor the cap.
+	g_tState.m_uMaxInflight = uMaxInflight ? uMaxInflight : uQueueDepth;
+	g_tState.m_iInflight.store ( 0, std::memory_order_release );
 	g_tState.m_bRunning.store ( true, std::memory_order_release );
 	g_tState.m_tReaper = std::thread ( ReaperLoop );
 	return true;
@@ -143,6 +150,11 @@ bool StartIoUring ( unsigned uQueueDepth, bool bSQPoll )
 bool IoUringUsesSQPoll()
 {
 	return g_tState.m_bSQPoll;
+}
+
+unsigned IoUringInflightCap()
+{
+	return g_tState.m_bRunning.load ( std::memory_order_acquire ) ? g_tState.m_uMaxInflight : 0;
 }
 
 void StopIoUring()
@@ -177,6 +189,17 @@ bool SubmitRead ( int iFD, void * pBuf, unsigned iBytes, int64_t iOffset, OnComp
 	if ( !g_tState.m_bRunning.load ( std::memory_order_acquire ) )
 		return false;
 
+	// Reserve an inflight slot up front (the throttle). When too many reads are already
+	// in flight, refuse so the caller does a synchronous read instead of piling unbounded
+	// pressure on the ring/disk; the reaper releases the slot on completion. The optimistic
+	// add-then-check can transiently overshoot under concurrent submitters but is corrected
+	// immediately, so the number of actually-submitted reads never exceeds the cap.
+	if ( g_tState.m_iInflight.fetch_add ( 1, std::memory_order_acq_rel ) >= (int)g_tState.m_uMaxInflight )
+	{
+		g_tState.m_iInflight.fetch_sub ( 1, std::memory_order_acq_rel );
+		return false;
+	}
+
 	auto * pComp = new Completion_t { std::move ( fnDone ) };
 
 	std::lock_guard<std::mutex> tLock ( g_tState.m_tSubmitMutex );
@@ -185,6 +208,7 @@ bool SubmitRead ( int iFD, void * pBuf, unsigned iBytes, int64_t iOffset, OnComp
 	{
 		// Ring full: caller falls back to synchronous read.
 		delete pComp;
+		g_tState.m_iInflight.fetch_sub ( 1, std::memory_order_acq_rel );
 		return false;
 	}
 
@@ -194,8 +218,9 @@ bool SubmitRead ( int iFD, void * pBuf, unsigned iBytes, int64_t iOffset, OnComp
 	int iRc = io_uring_submit ( &g_tState.m_tRing );
 	if ( iRc<0 )
 	{
-		// Submission failed; the SQE is dropped. Reclaim the completion.
+		// Submission failed; the SQE is dropped. Reclaim the completion and the slot.
 		delete pComp;
+		g_tState.m_iInflight.fetch_sub ( 1, std::memory_order_acq_rel );
 		return false;
 	}
 	return true;
@@ -208,8 +233,9 @@ bool SubmitRead ( int iFD, void * pBuf, unsigned iBytes, int64_t iOffset, OnComp
 namespace IoUring
 {
 	bool IsIoUringAvailable() { return false; }
-	bool StartIoUring ( unsigned, bool ) { return false; }
+	bool StartIoUring ( unsigned, bool, unsigned ) { return false; }
 	bool IoUringUsesSQPoll() { return false; }
+	unsigned IoUringInflightCap() { return 0; }
 	void StopIoUring() {}
 	bool SubmitRead ( int, void *, unsigned, int64_t, OnComplete_fn ) { return false; }
 }

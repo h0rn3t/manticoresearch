@@ -49,12 +49,21 @@ bool IsIoUringAvailable();
 /// bSQPoll requests kernel-side submission polling (IORING_SETUP_SQPOLL), which
 /// avoids a submit syscall per read at the cost of a busy kernel poll thread;
 /// it falls back to normal mode if the kernel refuses it.
+/// uMaxInflight caps how many reads may be in flight at once: once the cap is hit,
+/// SubmitRead returns false and the caller falls back to a synchronous read. This is
+/// the async analog of the old read throttle - it bounds concurrent disk pressure
+/// independently of worker count. 0 means "use uQueueDepth" (the ring already bounds
+/// inflight reads to its depth, so that is the natural ceiling).
 /// Returns false and leaves the backend disabled if io_uring is unavailable;
 /// callers must then use the synchronous path. Idempotent.
-bool StartIoUring ( unsigned uQueueDepth = 1024, bool bSQPoll = false );
+bool StartIoUring ( unsigned uQueueDepth = 1024, bool bSQPoll = false, unsigned uMaxInflight = 0 );
 
 /// True if the running backend negotiated SQPOLL (for diagnostics/logging).
 bool IoUringUsesSQPoll();
+
+/// The effective inflight-read cap (after StartIoUring resolved 0 -> queue depth).
+/// 0 if the backend is not running. For diagnostics/logging.
+unsigned IoUringInflightCap();
 
 /// Stop the reaper thread and tear down the ring. Idempotent.
 void StopIoUring();

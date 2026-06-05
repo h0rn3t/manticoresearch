@@ -33,16 +33,7 @@ CSphAutofile::~CSphAutofile()
 static int AutoFileOpen ( const CSphString & sName, int iMode )
 {
 	int iFD = -1;
-#if _WIN32
-	if ( iMode==SPH_O_READ )
-	{
-		intptr_t tFD = (intptr_t)CreateFile ( sName.cstr(), GENERIC_READ , FILE_SHARE_DELETE | FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL );
-		iFD = _open_osfhandle ( tFD, 0 );
-	} else
-		iFD = ::open ( sName.cstr(), iMode, 0644 );
-#else
 	iFD = ::open ( sName.cstr(), iMode, 0644 );
-#endif
 
 	return iFD;
 }
@@ -1042,51 +1033,6 @@ size_t sphReadThrottled ( int iFD, void* pBuf, size_t iCount )
 
 //////////////////////////////////////////////////////////////////////////
 
-#if _WIN32
-
-// atomic seek+read for Windows
-int sphPread ( int iFD, void * pBuf, int iBytes, SphOffset_t iOffset )
-{
-	if ( iBytes==0 )
-		return 0;
-
-	CSphIOStats * pIOStats = GetIOStats();
-	int64_t tmStart = 0;
-	if ( pIOStats )
-		tmStart = sphMicroTimer();
-
-	HANDLE hFile;
-	hFile = (HANDLE) _get_osfhandle ( iFD );
-	if ( hFile==INVALID_HANDLE_VALUE )
-		return -1;
-
-	STATIC_SIZE_ASSERT ( SphOffset_t, 8 );
-	OVERLAPPED tOverlapped = { 0 };
-	tOverlapped.Offset = (DWORD)( iOffset & I64C(0xffffffff) );
-	tOverlapped.OffsetHigh = (DWORD)( iOffset>>32 );
-
-	DWORD uRes;
-	if ( !ReadFile ( hFile, pBuf, iBytes, &uRes, &tOverlapped ) )
-	{
-		DWORD uErr = GetLastError();
-		if ( uErr==ERROR_HANDLE_EOF )
-			return 0;
-
-		errno = uErr; // FIXME! should remap from Win to POSIX
-		return -1;
-	}
-
-	if ( pIOStats )
-	{
-		pIOStats->m_iReadTime += sphMicroTimer() - tmStart;
-		pIOStats->m_iReadOps++;
-		pIOStats->m_iReadBytes += iBytes;
-	}
-
-	return uRes;
-}
-
-#else
 #if HAVE_PREAD
 
 // atomic seek+read for non-Windows systems with pread() call
@@ -1119,7 +1065,6 @@ int sphPread ( int iFD, void * pBuf, int iBytes, SphOffset_t iOffset )
 }
 
 #endif // HAVE_PREAD
-#endif // _WIN32
 
 
 // Optional async-read hook, installed by the searchd-only io_uring glue

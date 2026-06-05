@@ -37,9 +37,6 @@
 	#include <signal.h>
 #endif
 
-#if HAVE_KQUEUE
-	#include <sys/event.h>
-#endif
 
 int64_t			g_iPingIntervalUs		= 0;		// by default ping HA agents every 1 second
 DWORD			g_uHAPeriodKarmaS	= 60;		// by default use the last 1 minute statistic to determine the best HA agent
