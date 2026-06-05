@@ -36,8 +36,14 @@ jobs:
   clt-amd64:
     name: CLT-Amd64
     runs-on: ubuntu-22.04
+    # Cap each matrix entry so a hung CLT replay fails fast instead of burning the
+    # GitHub default 360 min. CLT buffers all output (writes the .rep at the end),
+    # so a single stuck command — e.g. an interactive apt/dpkg prompt or a daemon
+    # that fails to background inside the container — otherwise idles silently for
+    # hours. Mirrors the `clt` job in clt_tests.yml which already sets this.
+    timeout-minutes: 30
     strategy:
-      fail-fast: false 
+      fail-fast: false
       matrix:
         include:
           - name: Alma 8 release installation
