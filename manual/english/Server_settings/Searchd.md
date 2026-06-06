@@ -1003,6 +1003,44 @@ max_packet_size = 32M
 <!-- end -->
 
 
+### mmap_advise
+
+<!-- example conf mmap_advise -->
+Master switch for kernel memory-access advice (`madvise`) on memory-mapped table components (attributes, blob attributes and the dictionary). Optional, default is `1` (enabled). Linux only.
+
+When enabled, `searchd` tells the kernel how each mapped component is accessed so it can read more efficiently: components served via `mmap_preread` (or `mlock`) are advised `MADV_WILLNEED` to prefault their resident set, while plain `mmap` components are advised `MADV_RANDOM` to suppress wasteful readahead on random lookups. It also enables proactive memory reclaim (`MADV_COLD`/`MADV_PAGEOUT`) of cold table regions, such as a disk chunk superseded by an optimize/merge. All hints are advisory: they never change query results or the on-disk format, and they are silently ignored on kernels that do not support them. Set to `0` to apply only the legacy housekeeping hints.
+
+
+<!-- intro -->
+##### Example:
+
+<!-- request Example -->
+
+```ini
+mmap_advise = 1
+```
+<!-- end -->
+
+
+### mmap_hugepages
+
+<!-- example conf mmap_hugepages -->
+Enables transparent huge pages (`MADV_HUGEPAGE`) for large memory-mapped table components, to reduce TLB pressure on the search hot path. Optional, default is `1` (enabled). Linux only. Has no effect unless [mmap_advise](#mmap_advise) is also enabled.
+
+Huge-page advice is only applied to mappings of at least 2 MiB. Transparent huge pages can increase resident memory or add page-collapse latency on some workloads; set this to `0` to keep base pages for mapped components on hosts where that is undesirable, while still keeping the other access-pattern hints.
+
+
+<!-- intro -->
+##### Example:
+
+<!-- request Example -->
+
+```ini
+mmap_hugepages = 1
+```
+<!-- end -->
+
+
 ### mysql_version_string
 
 <!-- example conf mysql_version_string -->

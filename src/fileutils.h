@@ -200,7 +200,7 @@ public:
 		this->Reset();
 	}
 
-	bool Setup ( const CSphString & sFile, CSphString & sError, bool bWrite = false )
+	bool Setup ( const CSphString & sFile, CSphString & sError, bool bWrite = false, MmapAdvise_e eAccess = MmapAdvise_e::NONE )
 	{
 		m_sFilename = sFile;
 		m_bWrite = bWrite;
@@ -293,11 +293,26 @@ public:
 
 			mmadvise ( pData, iFileSize, Advise_e::NOFORK );
 			mmadvise ( pData, iFileSize, Advise_e::NODUMP );
+
+			// access-pattern + huge-page hints, derived from the component's file-access mode.
+			// advisory only: governed by the runtime switch and a no-op for FILE/unknown components.
+			mmadviseAccess ( pData, iFileSize, eAccess );
 		}
 #endif
 
 		this->Set ( pData, iCount );
 		return true;
+	}
+
+	// hint the kernel that this mapping is now cold (e.g. a superseded disk chunk about to be
+	// dropped), so its resident pages can be returned without unmapping. advisory; no-op when off.
+	void AdviseCold () const
+	{
+#if !_WIN32
+		const T * pData = this->GetReadPtr();
+		if ( pData )
+			mmadviseCold ( const_cast<T *> ( pData ), this->GetLengthBytes() );
+#endif
 	}
 
 	void Reset() override

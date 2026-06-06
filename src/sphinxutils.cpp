@@ -1065,6 +1065,8 @@ static KeyDesc_t g_dKeysSearchd[] =
 	{ "pseudo_sharding",		0, nullptr },
 	{ "io_uring",				0, nullptr },
 	{ "io_uring_sqpoll",		0, nullptr },
+	{ "mmap_advise",			0, nullptr },
+	{ "mmap_hugepages",			0, nullptr },
 	{ "optimize_cutoff",		0, nullptr },
 	{ "secondary_indexes",		0, nullptr },
 	{ "accurate_aggregation",	0, nullptr },

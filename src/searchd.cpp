@@ -14425,6 +14425,11 @@ void ConfigureSearchd ( const CSphConfig & hConf, bool bNeedPIDFile, bool bTestM
 	g_bIoUringSQPoll = hSearchd.GetBool ( "io_uring_sqpoll", false );
 	g_iIoUringMaxInflight = hSearchd.GetInt ( "io_uring_max_inflight", 0 );
 
+	// mmap performance advice (access-pattern + transparent huge pages); both default on.
+	// mmap_hugepages additionally gated by mmap_advise (the master switch).
+	g_bMmapAdvise = hSearchd.GetBool ( "mmap_advise", true );
+	g_bMmapHugePages = hSearchd.GetBool ( "mmap_hugepages", true );
+
 	g_iClientQlTimeoutS = hSearchd.GetSTimeS( "sphinxql_timeout", 900);
 	g_iClientTimeoutS = hSearchd.GetSTimeS ( "client_timeout", 300 );
 

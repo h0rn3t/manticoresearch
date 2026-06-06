@@ -1205,6 +1205,7 @@ public:
 	bool				Prealloc ( bool bStripPath, FilenameBuilder_i * pFilenameBuilder, StrVec_t & dWarnings ) final;
 	void				Dealloc () final;
 	void				Preread () final;
+	void				HintColdMmap () const final;
 
 	RenameResult_e		RenameEx ( CSphString sNewBase ) final;
 
@@ -1477,6 +1478,20 @@ int GetReadBuffer ( int iBuf )
 
 bool IsMlock ( FileAccess_e eType ) { return eType==FileAccess_e::MLOCK; }
 bool IsOndisk ( FileAccess_e eType ) { return eType==FileAccess_e::FILE || eType==FileAccess_e::MMAP; }
+
+// map a component's file-access mode to the mmap advice policy applied to its memory mapping.
+// MMAP_PREREAD/MLOCK are resident, scanned sets (prefault via WILLNEED); plain MMAP is randomly
+// probed (RANDOM, suppress readahead); FILE/UNKNOWN are not mmaped here, so no hint.
+static MmapAdvise_e FileAccessToAdvise ( FileAccess_e eType )
+{
+	switch ( eType )
+	{
+	case FileAccess_e::MMAP_PREREAD:
+	case FileAccess_e::MLOCK:		return MmapAdvise_e::PREREAD;
+	case FileAccess_e::MMAP:		return MmapAdvise_e::RANDOM;
+	default:						return MmapAdvise_e::NONE;
+	}
+}
 
 bool FileAccessSettings_t::operator== ( const FileAccessSettings_t & tOther ) const
 {
@@ -9868,7 +9883,7 @@ bool CSphIndex_VLN::PreallocWordlist()
 	bool bWordDict = m_pDict->GetSettings().m_bWordDict;
 
 	// only checkpoint and wordlist infixes are actually read here; dictionary itself is just mapped
-	if ( !m_tWordlist.Preread ( GetFilename ( SPH_EXT_SPI ), bWordDict, m_tSettings.m_iSkiplistBlockSize, m_sLastError ) )
+	if ( !m_tWordlist.Preread ( GetFilename ( SPH_EXT_SPI ), bWordDict, m_tSettings.m_iSkiplistBlockSize, m_sLastError, FileAccessToAdvise ( m_tMutableSettings.m_tFileAccess.m_eDict ) ) )
 		return false;
 
 	if ( ( m_tWordlist.m_tBuf.GetLengthBytes()<=18 )!=( m_tWordlist.m_dCheckpoints.GetLength()==0 ) )
@@ -9890,7 +9905,7 @@ bool CSphIndex_VLN::PreallocAttributes()
 	if ( !m_tSchema.HasNonColumnarAttrs() )
 		return true;
 
-	if ( !m_tAttr.Setup ( GetFilename ( SPH_EXT_SPA ), m_sLastError, true ) )
+	if ( !m_tAttr.Setup ( GetFilename ( SPH_EXT_SPA ), m_sLastError, true, FileAccessToAdvise ( m_tMutableSettings.m_tFileAccess.m_eAttr ) ) )
 		return false;
 
 	if ( !CheckDocsCount ( m_iDocinfo, m_sLastError ) )
@@ -9900,7 +9915,7 @@ bool CSphIndex_VLN::PreallocAttributes()
 
 	if ( m_tSchema.GetAttr ( sphGetBlobLocatorName() ) )
 	{
-		if ( !m_tBlobAttrs.Setup ( GetFilename ( SPH_EXT_SPB ), m_sLastError, true ) )
+		if ( !m_tBlobAttrs.Setup ( GetFilename ( SPH_EXT_SPB ), m_sLastError, true, FileAccessToAdvise ( m_tMutableSettings.m_tFileAccess.m_eBlob ) ) )
 			return false;
 	}
 
@@ -10183,6 +10198,17 @@ void CSphIndex_VLN::Preread()
 
 	m_bPassedRead = true;
 	sphLogDebug ( "Preread successfully finished" );
+}
+
+
+void CSphIndex_VLN::HintColdMmap () const
+{
+	// the mmaped components (attrs, blob attrs, dictionary) are the large resident structures;
+	// advise the kernel they are cold so their pages can be reclaimed proactively. advisory no-op
+	// when the switch is off or the kernel lacks MADV_COLD/MADV_PAGEOUT.
+	m_tAttr.AdviseCold();
+	m_tBlobAttrs.AdviseCold();
+	m_tWordlist.m_tBuf.AdviseCold();
 }
 
 

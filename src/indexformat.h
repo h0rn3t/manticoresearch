@@ -109,7 +109,7 @@ public:
 										~CWordlist () override;
 
 	void								Reset();
-	bool								Preread ( const CSphString & sName, bool bWordDict, int iSkiplistBlockSize, CSphString & sError );
+	bool								Preread ( const CSphString & sName, bool bWordDict, int iSkiplistBlockSize, CSphString & sError, MmapAdvise_e eAccess = MmapAdvise_e::NONE );
 
 	const CSphWordlistCheckpoint *		FindCheckpointCrc ( SphWordID_t iWordID ) const;
 	const CSphWordlistCheckpoint *		FindCheckpointWrd ( const char * sWord, int iWordLen, bool bStarMode ) const;

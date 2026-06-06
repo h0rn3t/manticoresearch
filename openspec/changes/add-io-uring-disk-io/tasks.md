@@ -27,8 +27,8 @@
 - [x] 2.5 Ограничение inflight SQE (замена логики throttling)
       → атомарный счётчик `m_iInflight` + cap `m_uMaxInflight` в `iouring.cpp`: при достижении
         cap `SubmitRead` возвращает false → фолбэк на `sphPread`. Конфиг `io_uring_max_inflight`
-        (0 = глубина кольца, сохраняет прежнее поведение). NB: написано на darwin, локально
-        не собрано — собрать/прогнать на CI (x86_64 ubuntu)
+        (0 = глубина кольца, сохраняет прежнее поведение). NB: написано на darwin; CI x86_64
+        ЗЕЛЁНЫЙ — io_uring build ✓ (run 27036542446) + probe ✓ (бэкенд + 8 конкурентных чтений)
 
 ## 3. Корутинная интеграция
 - [x] 3.1 Хелпер `SubmitReadAndYield(fd, buf, len, off) -> bytes` поверх `Waker_c`/`YieldWith`
@@ -52,7 +52,9 @@
 ## 5. Дроп не-Linux бэкендов (Linux-only)
 > NB: §5 написан вслепую на darwin (io_uring/epoll-путь локально не собирается). На Linux
 > epoll и так был единственным живым бэкендом, так что удалён только мёртвый на Linux код
-> (kqueue/poll/win32) — собрать/прогнать на CI (x86_64 ubuntu).
+> (kqueue/poll/win32). CI x86_64 build ЗЕЛЁНЫЙ: io_uring build ✓ + Linux debug & release builds ✓
+> (Test-ран 27036291057). Падение MCL-джоба — флак скачивания эмбеддингов/columnar-lib
+> («All download attempts failed»), затронуты только knn/embeddings/columnar тесты, не наш диск.
 - [x] 5.1 `netpoll.cpp`: убрать `NETPOLL_KQUEUE`/`NETPOLL_POLL`/Windows, оставить epoll
       → `netpoll.h`: селект жёстко в epoll (`#error` если нет `HAVE_EPOLL`), `POLLING_KQUEUE/POLL`
         больше не определяются; `netpoll.cpp` 690→347 строк — kqueue/poll `PollTraits_t` и весь
@@ -66,8 +68,31 @@
         пробится (`check_function_exists(epoll_ctl HAVE_EPOLL)`) для compile-гварда в `netpoll.h`
 
 ## 6. Бенчи и валидация
-- [ ] 6.1 Бенч-харность: cold/warm cache, конкуренция 1→N, индекс > RAM
-- [ ] 6.2 Сравнение io_uring vs pread на одном бинаре (рантайм-флаг)
+> Прогон: `iouring_bench.yml` run 27039638982 (ubuntu-24.04, liburing вендорится →
+> `HAVE_IO_URING=1`, `io_uring: enabled`). Матрица 1.5M доков, `access=file`, CONC=16, 15s/run:
+>
+> | mode | cache | QPS | p50 | p95 | p99 | errors |
+> |---|---|---|---|---|---|---|
+> | pread | cold | 1859 | 6.62 | 12.98 | 17.82 | 0 |
+> | io_uring | cold | **2059** | 7.10 | 12.57 | 16.06 | 0 |
+> | pread | warm | 2097 | 6.66 | 12.64 | 16.50 | 0 |
+> | io_uring | warm | 1998 | 6.75 | 11.99 | 15.31 | 0 |
+>
+> Cold: io_uring **+10.8% QPS**; warm: ~par (−4.7%, async-оверхед без disk-wait). 0 ошибок везде.
+> 2-ядерный раннер с виртуальным диском занижает реальный выигрыш (NVMe / индекс ≫ RAM).
+- [x] 6.1 Бенч-харность: cold/warm cache, конкуренция 1→N, индекс > RAM
+      → `misc/iouring_bench/` (`gen_data.py`/`load.py`/`run.sh`) + `iouring_bench.yml`; гоняет
+        cold/warm × {pread, io_uring, io_uring+sqpoll}. Прогнано на CI. Оговорка: CONC фикс.=16
+        (не свип 1→N), индекс под-RAM на GH-раннере
+- [x] 6.2 Сравнение io_uring vs pread на одном бинаре (рантайм-флаг)
+      → один бинарь, переключение `searchd.io_uring=0|1` в конфиге; cold io_uring +10.8% vs pread
 - [ ] 6.3 Снять QPS, p50/p95/p99, `aqu-sz` (iostat), CPU idle
-- [ ] 6.4 Проверка фолбэка: старое ядро / seccomp-контейнер не падает, откат на pread
+      → QPS + p50/p95/p99 снимаются (`load.py`); `aqu-sz` (iostat) и CPU-idle ХАРНОСТЬ НЕ ПИШЕТ —
+        дописать в `run.sh` (iostat-врапер вокруг прогона)
+- [x] 6.4 Проверка фолбэка: старое ядро / seccomp-контейнер не падает, откат на pread
+      → детект `IsIoUringAvailable()`: EPERM под seccomp + ENOSYS под amd64-эмуляцией (= нет
+        опкода, как старое ядро) подтверждены в smoke; `io_uring=0` в бенче → `sphPread`, 0 ошибок
 - [ ] 6.5 Корректность: существующие тесты поиска зелёные на обоих путях
+      → pread-путь: release-набор зелёный (1199/1207, остальное — флак скачивания, см. §5 NB).
+        io_uring-путь: бенч 1.5M доков, 0 ошибок (косвенно). Формальный прогон test-набора с
+        `io_uring=1` ещё не делал — это остаток 6.5

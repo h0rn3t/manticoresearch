@@ -9887,7 +9887,12 @@ void RtIndex_c::DropDiskChunk ( int iChunkID, int* pAffected )
 		auto pChunks = m_tRtChunks.RtData().m_pChunks;
 		for ( auto& pChunk : *pChunks )
 			if ( iChunkID == pChunk->Cidx().m_iChunk )
+			{
+				// this chunk is superseded and about to be dropped: its mappings are now cold,
+				// so hint the kernel to return their resident pages proactively (advisory).
+				pChunk->Cidx().HintColdMmap();
 				pChunk->m_bFinallyUnlink = true;
+			}
 			else
 				tChangeset.m_pNewDiskChunks->Add ( pChunk );
 	}

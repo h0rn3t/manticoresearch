@@ -284,7 +284,7 @@ void CWordlist::Reset ()
 }
 
 
-bool CWordlist::Preread ( const CSphString & sName, bool bWordDict, int iSkiplistBlockSize, CSphString & sError )
+bool CWordlist::Preread ( const CSphString & sName, bool bWordDict, int iSkiplistBlockSize, CSphString & sError, MmapAdvise_e eAccess )
 {
 	assert ( m_iDictCheckpointsOffset>0 );
 
@@ -300,7 +300,7 @@ bool CWordlist::Preread ( const CSphString & sName, bool bWordDict, int iSkiplis
 	// fast path for CRC checkpoints - just maps data and use inplace CP reader
 	if ( !bWordDict )
 	{
-		if ( !m_tBuf.Setup ( sName, sError ) )
+		if ( !m_tBuf.Setup ( sName, sError, false, eAccess ) )
 			return false;
 
 		m_pCpReader = new CheckpointReader_c;
@@ -398,7 +398,7 @@ bool CWordlist::Preread ( const CSphString & sName, bool bWordDict, int iSkiplis
 	tReader.Close();
 
 	// mapping up only wordlist without meta (checkpoints, infixes, etc.)
-	return m_tBuf.Setup ( sName, sError );
+	return m_tBuf.Setup ( sName, sError, false, eAccess );
 }
 
 

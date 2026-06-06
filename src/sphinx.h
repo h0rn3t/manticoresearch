@@ -1321,6 +1321,10 @@ public:
 	/// precache everything which needs to be precached
 	virtual void				Preread () = 0;
 
+	/// hint the kernel that this index's mmaped data is now cold (e.g. a superseded disk chunk
+	/// about to be dropped), so resident memory can be returned proactively. advisory; default no-op.
+	virtual void				HintColdMmap () const {}
+
 	/// set new index base path, and physically rename index files too
 	enum RenameResult_e { RE_OK, RE_FAIL, RE_FATAL };
 	virtual RenameResult_e		RenameEx ( CSphString sNewBase ) = 0;
